@@ -832,6 +832,39 @@ xfs_calc_sb_reservation(
 	return xfs_calc_buf_res(1, mp->m_sb.sb_sectsize);
 }
 
+int
+xfs_iext_count_may_overflow(
+	struct xfs_inode	*ip,
+	int			whichfork,
+	int			nr_to_add)
+{
+	struct xfs_ifork	*ifp;
+	uint64_t		max_exts = 0;
+	uint64_t		nr_exts;
+
+	switch (whichfork) {
+	case XFS_DATA_FORK:
+		max_exts = MAXEXTNUM;
+		break;
+
+	case XFS_ATTR_FORK:
+		max_exts = MAXAEXTNUM;
+		break;
+
+	default:
+		ASSERT(0);
+		break;
+	}
+
+	ifp = XFS_IFORK_PTR(ip, whichfork);
+	nr_exts = ifp->if_nextents + nr_to_add;
+
+	if (nr_exts > max_exts)
+		return -EFBIG;
+
+	return 0;
+}
+
 void
 xfs_trans_resv_calc(
 	struct xfs_mount	*mp,

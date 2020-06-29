@@ -93,5 +93,7 @@ struct xfs_trans_resv {
 
 void xfs_trans_resv_calc(struct xfs_mount *mp, struct xfs_trans_resv *resp);
 uint xfs_allocfree_log_count(struct xfs_mount *mp, uint num_ops);
+int xfs_iext_count_may_overflow(struct xfs_inode *ip, int whichfork,
+		int nr_exts);
 
 #endif	/* __XFS_TRANS_RESV_H__ */
