@@ -35,6 +35,12 @@ struct xfs_ifork {
 #define	XFS_IFBROOT	0x04	/* i_broot points to the bmap b-tree root */
 
 #define XFS_IEXT_ADD_CNT 1
+/*
+ * Removing an extent from the middle of an existing extent
+ * can cause the extent count to increase by 1.
+ * i.e. | Old extent | Hole | Old extent |
+ */
+#define XFS_IEXT_REMOVE_CNT 1
 
 /*
  * Fork handling.
