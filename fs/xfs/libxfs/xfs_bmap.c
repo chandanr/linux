@@ -5050,6 +5050,12 @@ xfs_bmap_del_extent_real(
 	    del->br_startoff > got.br_startoff && del_endoff < got_endoff)
 		return -ENOSPC;
 
+	if (S_ISDIR(VFS_I(ip)->i_mode) &&
+	    whichfork == XFS_DATA_FORK &&
+	    del->br_startoff > got.br_startoff && del_endoff < got_endoff &&
+	    xfs_iext_count_may_overflow(ip, whichfork, 1))
+		return -ENOSPC;
+
 	flags = XFS_ILOG_CORE;
 	if (whichfork == XFS_DATA_FORK && XFS_IS_REALTIME_INODE(ip)) {
 		xfs_filblks_t	len;

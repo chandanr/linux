@@ -1177,6 +1177,11 @@ xfs_create(
 	if (error)
 		goto out_trans_cancel;
 
+	error = xfs_iext_count_may_overflow(dp, XFS_DATA_FORK,
+			XFS_IEXT_DIR_MANIP_CNT(mp));
+	if (error)
+		goto out_trans_cancel;
+
 	/*
 	 * A newly created regular or special file just has one directory
 	 * entry pointing to them, but a directory also the "." entry
@@ -1392,6 +1397,11 @@ xfs_link(
 
 	xfs_trans_ijoin(tp, sip, XFS_ILOCK_EXCL);
 	xfs_trans_ijoin(tp, tdp, XFS_ILOCK_EXCL);
+
+	error = xfs_iext_count_may_overflow(tdp, XFS_DATA_FORK,
+			XFS_IEXT_DIR_MANIP_CNT(mp));
+	if (error)
+		goto error_return;
 
 	/*
 	 * If we are using project inheritance, we only allow hard link
@@ -3246,9 +3256,24 @@ xfs_rename(
 		/*
 		 * If there's no space reservation, check the entry will
 		 * fit before actually inserting it.
+		 *
+		 * If the entry does fit in, then there is no need to check for
+		 * extent count overflow since no new extents will be added to
+		 * the directory's data fork.
 		 */
 		if (!spaceres) {
 			error = xfs_dir_canenter(tp, target_dp, target_name);
+			if (error)
+				goto out_trans_cancel;
+		}
+		/*
+		 * Otherwise, Check if inserting the new entry can cause extent
+		 * count to overflow.
+		 */
+		else {
+			error = xfs_iext_count_may_overflow(target_dp,
+					XFS_DATA_FORK,
+					XFS_IEXT_DIR_MANIP_CNT(mp));
 			if (error)
 				goto out_trans_cancel;
 		}
