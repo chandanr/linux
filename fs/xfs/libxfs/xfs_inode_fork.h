@@ -39,6 +39,12 @@ struct xfs_ifork {
  * extent to a fork and there's no possibility of splitting an existing mapping.
  */
 #define XFS_IEXT_ADD_NOSPLIT_CNT	(1)
+/*
+ * Removing an extent from the middle of an existing extent can cause the extent
+ * count to increase by 1.
+ * i.e. | Old extent | Hole | Old extent |
+ */
+#define XFS_IEXT_REMOVE_CNT		(1)
 
 /*
  * Fork handling.
