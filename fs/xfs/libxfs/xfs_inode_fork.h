@@ -45,6 +45,15 @@ struct xfs_ifork {
  * i.e. | Old extent | Hole | Old extent |
  */
 #define XFS_IEXT_REMOVE_CNT		(1)
+/*
+ * Adding/removing an xattr can cause XFS_DA_NODE_MAXDEPTH extents to
+ * be added. One extra extent for dabtree in case a local attr is
+ * large enough to cause a double split.  It can also cause extent
+ * count to increase proportional to the size of a remote xattr's
+ * value.
+ */
+#define XFS_IEXT_ATTR_MANIP_CNT(rmt_blks) \
+	(XFS_DA_NODE_MAXDEPTH + max(1, rmt_blks))
 
 /*
  * Fork handling.
