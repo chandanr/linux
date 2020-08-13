@@ -86,6 +86,20 @@ struct xfs_ifork {
  * Hence number of extents increases by 2.
  */
 #define XFS_IEXT_REFLINK_END_COW_CNT	(2)
+/*
+ * Remapping an extent involves unmapping the existing extent and mapping in the
+ * new extent.
+ *
+ * When unmapping, an extent containing the entire unmap range can be split into
+ * two extents,
+ * i.e. | Old extent | hole | Old extent |
+ * Hence extent count increases by 1.
+ *
+ * Mapping in the new extent into the destination file can increase the extent
+ * count by 1.
+ */
+#define XFS_IEXT_REFLINK_REMAP_CNT(smap_real, dmap_written) \
+	(((smap_real) ? 1 : 0) + ((dmap_written) ? 1 : 0))
 
 /*
  * Fork handling.
