@@ -103,6 +103,13 @@ struct xfs_ifork {
 	(((smap_real) ? 1 : 0) + ((dmap_written) ? 1 : 0))
 
 /*
+ * Removing an initial range of source/donor file's extent and adding a new
+ * extent (from donor/source file) in its place will cause extent count to
+ * increase by 1.
+ */
+#define XFS_IEXT_SWAP_RMAP_CNT		(1)
+
+/*
  * Fork handling.
  */
 

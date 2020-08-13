@@ -28,6 +28,7 @@
 #include "xfs_icache.h"
 #include "xfs_iomap.h"
 #include "xfs_reflink.h"
+#include "xfs_bmap.h"
 
 /* Kernel only BMAP related definitions and functions */
 
@@ -1375,6 +1376,7 @@ xfs_swap_extent_rmap(
 		/* Unmap the old blocks in the source file. */
 		while (tirec.br_blockcount) {
 			ASSERT(tp->t_firstblock == NULLFSBLOCK);
+
 			trace_xfs_swap_extent_rmap_remap_piece(tip, &tirec);
 
 			/* Read extent from the source file */
@@ -1394,6 +1396,22 @@ xfs_swap_extent_rmap(
 					tirec.br_blockcount,
 					irec.br_blockcount);
 			trace_xfs_swap_extent_rmap_remap_piece(tip, &uirec);
+
+			if (xfs_bmap_is_update_needed(&uirec)) {
+				error = xfs_iext_count_may_overflow(ip,
+						XFS_DATA_FORK,
+						XFS_IEXT_SWAP_RMAP_CNT);
+				if (error)
+					goto out;
+			}
+
+			if (xfs_bmap_is_update_needed(&irec)) {
+				error = xfs_iext_count_may_overflow(tip,
+						XFS_DATA_FORK,
+						XFS_IEXT_SWAP_RMAP_CNT);
+				if (error)
+					goto out;
+			}
 
 			/* Remove the mapping from the donor file. */
 			xfs_bmap_unmap_extent(tp, tip, &uirec);
