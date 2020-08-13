@@ -70,6 +70,12 @@ struct xfs_ifork {
  * Hence extent count can increase by 2.
  */
 #define XFS_IEXT_WRITE_UNWRITTEN_CNT 2
+/*
+ * The extent mapping the file offset at which a hole has to be
+ * inserted will be split into two extents causing extent count to
+ * increase by 1.
+ */
+#define XFS_IEXT_INSERT_HOLE_CNT 1
 
 /*
  * Fork handling.

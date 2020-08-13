@@ -1166,6 +1166,15 @@ xfs_insert_file_space(
 	xfs_trans_ijoin(tp, ip, 0);
 
 	/*
+	 * Splitting the extent mapping containing stop_fsb will cause
+	 * extent count to increase by 1.
+	 */
+	error = xfs_iext_count_may_overflow(ip, XFS_DATA_FORK,
+			XFS_IEXT_INSERT_HOLE_CNT);
+	if (error)
+		goto out_trans_cancel;
+
+	/*
 	 * The extent shifting code works on extent granularity. So, if stop_fsb
 	 * is not the starting block of extent, we need to split the extent at
 	 * stop_fsb.
