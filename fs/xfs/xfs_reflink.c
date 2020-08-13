@@ -29,6 +29,7 @@
 #include "xfs_iomap.h"
 #include "xfs_sb.h"
 #include "xfs_ag_resv.h"
+#include "xfs_trans_resv.h"
 
 /*
  * Copy on Write of Shared Blocks
@@ -627,6 +628,11 @@ xfs_reflink_end_cow_extent(
 	 */
 	xfs_ilock(ip, XFS_ILOCK_EXCL);
 	xfs_trans_ijoin(tp, ip, 0);
+
+	error = xfs_iext_count_may_overflow(ip, XFS_DATA_FORK,
+			XFS_IEXT_REFLINK_END_COW_CNT);
+	if (error)
+		goto out_cancel;
 
 	/*
 	 * In case of racing, overlapping AIO writes no COW extents might be
