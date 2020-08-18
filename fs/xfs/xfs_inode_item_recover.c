@@ -135,6 +135,8 @@ xlog_recover_inode_commit_pass2(
 	struct xfs_log_dinode		*ldip;
 	uint				isize;
 	int				need_free = 0;
+	xfs_extnum_t                    nextents;
+	xfs_extnum_t                    anextents;
 
 	if (item->ri_buf[0].i_len == sizeof(struct xfs_inode_log_format)) {
 		in_f = item->ri_buf[0].i_addr;
@@ -256,16 +258,24 @@ xlog_recover_inode_commit_pass2(
 			goto out_release;
 		}
 	}
-	if (unlikely(ldip->di_nextents + ldip->di_anextents > ldip->di_nblocks)){
+
+       nextents = ldip->di_nextents_lo;
+       if (xfs_sb_version_hasextenthi(&mp->m_sb))
+               nextents |= ((u64)(ldip->di_nextents_hi) << 32);
+
+       anextents = ldip->di_anextents_lo;
+       if (xfs_sb_version_hasextenthi(&mp->m_sb))
+               anextents |= ((u32)(ldip->di_anextents_hi) << 16);
+
+       if (unlikely(nextents + anextents > ldip->di_nblocks)) {
 		XFS_CORRUPTION_ERROR("xlog_recover_inode_pass2(5)",
 				     XFS_ERRLEVEL_LOW, mp, ldip,
 				     sizeof(*ldip));
 		xfs_alert(mp,
 	"%s: Bad inode log record, rec ptr "PTR_FMT", dino ptr "PTR_FMT", "
-	"dino bp "PTR_FMT", ino %Ld, total extents = %d, nblocks = %Ld",
+	"dino bp "PTR_FMT", ino %Ld, total extents = %llu, nblocks = %Ld",
 			__func__, item, dip, bp, in_f->ilf_ino,
-			ldip->di_nextents + ldip->di_anextents,
-			ldip->di_nblocks);
+			nextents + anextents, ldip->di_nblocks);
 		error = -EFSCORRUPTED;
 		goto out_release;
 	}
@@ -293,7 +303,7 @@ xlog_recover_inode_commit_pass2(
 	}
 
 	/* recover the log dinode inode into the on disk inode */
-	xfs_log_dinode_to_disk(ldip, dip);
+	xfs_log_dinode_to_disk(mp, ldip, dip);
 
 	fields = in_f->ilf_fields;
 	if (fields & XFS_ILOG_DEV)

@@ -838,23 +838,14 @@ xfs_iext_count_may_overflow(
 	int			whichfork,
 	int			nr_to_add)
 {
+	struct xfs_sb		*sbp = &ip->i_mount->m_sb;
 	struct xfs_ifork	*ifp;
 	uint64_t		max_exts = 0;
 	uint64_t		nr_exts;
 
-	switch (whichfork) {
-	case XFS_DATA_FORK:
-		max_exts = MAXEXTNUM;
-		break;
+	ASSERT(whichfork == XFS_DATA_FORK || whichfork == XFS_ATTR_FORK);
 
-	case XFS_ATTR_FORK:
-		max_exts = MAXAEXTNUM;
-		break;
-
-	default:
-		ASSERT(0);
-		break;
-	}
+	max_exts = xfs_imax_extents(sbp, whichfork);
 
 	ifp = XFS_IFORK_PTR(ip, whichfork);
 	nr_exts = ifp->if_nextents + nr_to_add;

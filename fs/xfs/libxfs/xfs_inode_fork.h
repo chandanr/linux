@@ -21,10 +21,10 @@ struct xfs_ifork {
 		void		*if_root;	/* extent tree root */
 		char		*if_data;	/* inline file data */
 	} if_u1;
+	xfs_extnum_t		if_nextents;	/* # of extents in this fork */
 	short			if_broot_bytes;	/* bytes allocated for root */
 	unsigned char		if_flags;	/* per-fork flags */
 	int8_t			if_format;	/* format of this fork */
-	xfs_extnum_t		if_nextents;	/* # of extents in this fork */
 };
 
 /*
@@ -150,6 +150,14 @@ static inline int8_t xfs_ifork_format(struct xfs_ifork *ifp)
 	if (!ifp)
 		return XFS_DINODE_FMT_EXTENTS;
 	return ifp->if_format;
+}
+
+static inline xfs_extnum_t xfs_imax_extents(struct xfs_sb *sbp, int whichfork)
+{
+	if (xfs_sb_version_hasextenthi(sbp))
+		return MAXEXTNUM_HI;
+	else
+		return MAXEXTNUM;
 }
 
 struct xfs_ifork *xfs_iext_state_to_fork(struct xfs_inode *ip, int state);
