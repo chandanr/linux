@@ -1,0 +1,99 @@
+From 7bc062b46118a7beff46a1a8921b5651df4a94da Mon Sep 17 00:00:00 2001
+From: Chandan Babu R <chandanrlinux@gmail.com>
+Date: Thu, 20 Aug 2020 10:56:33 +0530
+Subject: [PATCH V3 00/10] Bail out if transaction can cause extent count to overflow
+To: linux-xfs@vger.kernel.org
+Cc: darrick.wong@oracle.com,
+    david@fromorbit.com,
+    hch@infradead.org
+
+XFS does not check for possible overflow of per-inode extent counter
+fields when adding extents to either data or attr fork.
+
+For e.g.
+1. Insert 5 million xattrs (each having a value size of 255 bytes) and
+   then delete 50% of them in an alternating manner.
+
+2. On a 4k block sized XFS filesystem instance, the above causes 98511
+   extents to be created in the attr fork of the inode.
+
+   xfsaild/loop0  2008 [003]  1475.127209: probe:xfs_inode_to_disk: (ffffffffa43fb6b0) if_nextents=98511 i_ino=131
+
+3. The incore inode fork extent counter is a signed 32-bit
+   quantity. However, the on-disk extent counter is an unsigned 16-bit
+   quantity and hence cannot hold 98511 extents.
+
+4. The following incorrect value is stored in the xattr extent counter,
+   # xfs_db -f -c 'inode 131' -c 'print core.naextents' /dev/loop0
+   core.naextents = -32561
+
+This patchset adds a new helper function
+(i.e. xfs_iext_count_may_overflow()) to check for overflow of the
+per-inode data and xattr extent counters and invokes it before
+starting an fs operation (e.g. creating a new directory entry). With
+this patchset applied, XFS detects counter overflows and returns with
+an error rather than causing a silent corruption.
+
+The patchset has been tested by executing xfstests with the following
+mkfs.xfs options,
+1. -m crc=0 -b size=1k
+2. -m crc=0 -b size=4k
+3. -m crc=0 -b size=512
+4. -m rmapbt=1,reflink=1 -b size=1k
+5. -m rmapbt=1,reflink=1 -b size=4k
+
+The patches can also be obtained from
+https://github.com/chandanr/linux.git at branch xfs-reserve-extent-count-v3.
+
+Changelog:
+V2 -> V3:
+  1. Move the definition of xfs_iext_count_may_overflow() from
+     libxfs/xfs_trans_resv.c to libxfs/xfs_inode_fork.c. Also, I tried
+     to make xfs_iext_count_may_overflow() an inline function by
+     placing the definition in libxfs/xfs_inode_fork.h. However this
+     required that the definition of 'struct xfs_inode' be available,
+     since xfs_iext_count_may_overflow() uses a 'struct xfs_inode *'
+     type variable.
+  2. Handle XFS_COW_FORK within xfs_iext_count_may_overflow() by
+     returning a success value.
+  3. Rename XFS_IEXT_ADD_CNT to XFS_IEXT_ADD_NOSPLIT_CNT. Thanks to
+     Darrick for the suggesting the new name.
+  4. Expand comments to make use of 80 columns.
+
+V1 -> V2:
+  1. Rename helper function from xfs_trans_resv_ext_cnt() to
+     xfs_iext_count_may_overflow().
+  2. Define and use macros to represent fs operations and the
+     corresponding increase in extent count.
+  3. Split the patches based on the fs operation being performed.
+
+Chandan Babu R (10):
+  xfs: Add helper for checking per-inode extent count overflow
+  xfs: Check for extent overflow when trivally adding a new extent
+  xfs: Check for extent overflow when deleting an extent
+  xfs: Check for extent overflow when adding/removing xattrs
+  xfs: Check for extent overflow when adding/removing dir entries
+  xfs: Check for extent overflow when writing to unwritten extent
+  xfs: Check for extent overflow when inserting a hole
+  xfs: Check for extent overflow when moving extent from cow to data
+    fork
+  xfs: Check for extent overflow when remapping an extent
+  xfs: Check for extent overflow when swapping extents
+
+ fs/xfs/libxfs/xfs_attr.c       | 13 ++++++
+ fs/xfs/libxfs/xfs_bmap.c       |  6 +++
+ fs/xfs/libxfs/xfs_inode_fork.c | 23 +++++++++++
+ fs/xfs/libxfs/xfs_inode_fork.h | 75 ++++++++++++++++++++++++++++++++++
+ fs/xfs/xfs_bmap_item.c         |  4 ++
+ fs/xfs/xfs_bmap_util.c         | 30 ++++++++++++++
+ fs/xfs/xfs_dquot.c             |  8 +++-
+ fs/xfs/xfs_inode.c             | 27 ++++++++++++
+ fs/xfs/xfs_iomap.c             | 10 +++++
+ fs/xfs/xfs_reflink.c           | 10 +++++
+ fs/xfs/xfs_rtalloc.c           |  5 +++
+ fs/xfs/xfs_symlink.c           |  5 +++
+ 12 files changed, 215 insertions(+), 1 deletion(-)
+
+-- 
+2.28.0
+
