@@ -301,6 +301,7 @@ xfs_inode_to_log_dinode(
 	struct xfs_log_dinode	*to,
 	xfs_lsn_t		lsn)
 {
+	struct xfs_sb		*sbp = &ip->i_mount->m_sb;
 	struct xfs_icdinode	*from = &ip->i_d;
 	struct inode		*inode = VFS_I(ip);
 
@@ -326,8 +327,8 @@ xfs_inode_to_log_dinode(
 	to->di_size = from->di_size;
 	to->di_nblocks = from->di_nblocks;
 	to->di_extsize = from->di_extsize;
-	to->di_nextents = xfs_ifork_nextents(&ip->i_df);
-	to->di_anextents = xfs_ifork_nextents(ip->i_afp);
+	to->di_nextents_lo = xfs_ifork_nextents(&ip->i_df);
+	to->di_anextents_lo = xfs_ifork_nextents(ip->i_afp);
 	to->di_forkoff = from->di_forkoff;
 	to->di_aformat = xfs_ifork_format(ip->i_afp);
 	to->di_dmevmask = from->di_dmevmask;
@@ -344,6 +345,13 @@ xfs_inode_to_log_dinode(
 		to->di_crtime.t_nsec = from->di_crtime.tv_nsec;
 		to->di_flags2 = from->di_flags2;
 		to->di_cowextsize = from->di_cowextsize;
+		if (xfs_sb_version_haswideextcnt(sbp)) {
+			to->di_nextents_hi
+				= xfs_ifork_nextents(&ip->i_df) >> 32;
+			to->di_anextents_hi
+				= xfs_ifork_nextents(ip->i_afp) >> 16;
+		}
+
 		to->di_ino = ip->i_ino;
 		to->di_lsn = lsn;
 		memset(to->di_pad2, 0, sizeof(to->di_pad2));
