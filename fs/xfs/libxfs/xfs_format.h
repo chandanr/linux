@@ -930,10 +930,30 @@ enum xfs_dinode_fmt {
 	((w) == XFS_DATA_FORK ? \
 		(dip)->di_format : \
 		(dip)->di_aformat)
-#define XFS_DFORK_NEXTENTS(dip,w) \
-	((w) == XFS_DATA_FORK ? \
-		be32_to_cpu((dip)->di_nextents) : \
-		be16_to_cpu((dip)->di_anextents))
+
+static inline xfs_extnum_t
+xfs_dfork_nextents(
+	struct xfs_dinode	*dip,
+	int			whichfork)
+{
+	xfs_extnum_t		nextents = 0;
+
+	switch (whichfork) {
+	case XFS_DATA_FORK:
+		nextents = be32_to_cpu(dip->di_nextents);
+		break;
+
+	case XFS_ATTR_FORK:
+		nextents = be16_to_cpu(dip->di_anextents);
+		break;
+
+	default:
+		ASSERT(0);
+		break;
+	}
+
+	return nextents;
+}
 
 /*
  * For block and character special files the 32bit dev_t is stored at the
