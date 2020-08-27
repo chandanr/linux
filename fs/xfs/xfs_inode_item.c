@@ -301,6 +301,7 @@ xfs_inode_to_log_dinode(
 	struct xfs_log_dinode	*to,
 	xfs_lsn_t		lsn)
 {
+	struct xfs_sb		*sbp = &ip->i_mount->m_sb;
 	struct xfs_icdinode	*from = &ip->i_d;
 	struct inode		*inode = VFS_I(ip);
 
@@ -344,6 +345,13 @@ xfs_inode_to_log_dinode(
 		to->di_crtime.t_nsec = from->di_crtime.tv_nsec;
 		to->di_flags2 = from->di_flags2;
 		to->di_cowextsize = from->di_cowextsize;
+		if (xfs_sb_version_hasextenthi(sbp)) {
+			to->di_nextents_hi
+				= xfs_ifork_nextents(&ip->i_df) >> 32;
+			to->di_anextents_hi
+				= xfs_ifork_nextents(ip->i_afp) >> 16;
+		}
+
 		to->di_ino = ip->i_ino;
 		to->di_lsn = lsn;
 		memset(to->di_pad2, 0, sizeof(to->di_pad2));
