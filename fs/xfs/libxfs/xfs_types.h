@@ -12,8 +12,8 @@ typedef uint32_t	xfs_agblock_t;	/* blockno in alloc. group */
 typedef uint32_t	xfs_agino_t;	/* inode # within allocation grp */
 typedef uint32_t	xfs_extlen_t;	/* extent length in blocks */
 typedef uint32_t	xfs_agnumber_t;	/* allocation group number */
-typedef int32_t		xfs_extnum_t;	/* # of extents in a file */
-typedef int16_t		xfs_aextnum_t;	/* # extents in an attribute fork */
+typedef uint64_t	xfs_extnum_t;	/* # of extents in a file */
+typedef uint32_t	xfs_aextnum_t;	/* # extents in an attribute fork */
 typedef int64_t		xfs_fsize_t;	/* bytes in a file */
 typedef uint64_t	xfs_ufsize_t;	/* unsigned bytes in a file */
 
@@ -59,8 +59,10 @@ typedef void *		xfs_failaddr_t;
  * Max values for extlen, extnum, aextnum.
  */
 #define	MAXEXTLEN	((xfs_extlen_t)0x001fffff)	/* 21 bits */
-#define	MAXEXTNUM	((xfs_extnum_t)0x7fffffff)	/* signed int */
-#define	MAXAEXTNUM	((xfs_aextnum_t)0x7fff)		/* signed short */
+#define	MAXEXTNUM	((int32_t)0x7fffffff)		/* signed int */
+#define	MAXAEXTNUM	((int16_t)0x7fff)		/* signed short */
+#define MAXEXTNUM_HI	((xfs_extnum_t)0x7fffffffffff)	/* 47 bits */
+#define MAXAEXTNUM_HI	((xfs_aextnum_t)0xffffffff)	/* 32 bits */
 
 /*
  * Minimum and maximum blocksize and sectorsize.
