@@ -10,6 +10,7 @@
 #include "xfs_format.h"
 #include "xfs_log_format.h"
 #include "xfs_trans_resv.h"
+#include "xfs_sb.h"
 #include "xfs_mount.h"
 #include "xfs_inode.h"
 #include "xfs_trans.h"
@@ -104,9 +105,10 @@ xfs_iformat_extents(
 	int			whichfork)
 {
 	struct xfs_mount	*mp = ip->i_mount;
+	struct xfs_sb		*sbp = &mp->m_sb;
 	struct xfs_ifork	*ifp = XFS_IFORK_PTR(ip, whichfork);
+	int			nex = xfs_dfork_nextents(sbp, dip, whichfork);
 	int			state = xfs_bmap_fork_to_state(whichfork);
-	int			nex = XFS_DFORK_NEXTENTS(dip, whichfork);
 	int			size = nex * sizeof(xfs_bmbt_rec_t);
 	struct xfs_iext_cursor	icur;
 	struct xfs_bmbt_rec	*dp;
@@ -226,6 +228,7 @@ xfs_iformat_data_fork(
 	struct xfs_inode	*ip,
 	struct xfs_dinode	*dip)
 {
+	struct xfs_sb		*sbp = &ip->i_mount->m_sb;
 	struct inode		*inode = VFS_I(ip);
 	int			error;
 
@@ -234,7 +237,7 @@ xfs_iformat_data_fork(
 	 * depend on it.
 	 */
 	ip->i_df.if_format = dip->di_format;
-	ip->i_df.if_nextents = be32_to_cpu(dip->di_nextents);
+	ip->i_df.if_nextents = xfs_dfork_nextents(sbp, dip, XFS_DATA_FORK);
 
 	switch (inode->i_mode & S_IFMT) {
 	case S_IFIFO:
@@ -286,6 +289,7 @@ xfs_iformat_attr_fork(
 	struct xfs_inode	*ip,
 	struct xfs_dinode	*dip)
 {
+	struct xfs_sb		*sbp = &ip->i_mount->m_sb;
 	int			error = 0;
 
 	/*
@@ -296,7 +300,7 @@ xfs_iformat_attr_fork(
 	ip->i_afp->if_format = dip->di_aformat;
 	if (unlikely(ip->i_afp->if_format == 0)) /* pre IRIX 6.2 file system */
 		ip->i_afp->if_format = XFS_DINODE_FMT_EXTENTS;
-	ip->i_afp->if_nextents = be16_to_cpu(dip->di_anextents);
+	ip->i_afp->if_nextents = xfs_dfork_nextents(sbp, dip, XFS_ATTR_FORK);
 
 	switch (ip->i_afp->if_format) {
 	case XFS_DINODE_FMT_LOCAL:
