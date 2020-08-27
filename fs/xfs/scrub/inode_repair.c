@@ -1198,7 +1198,7 @@ xrep_inode_blockcounts(
 			return error;
 		if (count >= sc->mp->m_sb.sb_dblocks)
 			return -EFSCORRUPTED;
-		if (nextents >= XFS_IFORK_EXTCNT_MAXS16)
+		if (nextents >= xfs_iext_max_nextents(sc->mp, XFS_ATTR_FORK))
 			return -EFSCORRUPTED;
 		ifp->if_nextents = nextents;
 	} else {
