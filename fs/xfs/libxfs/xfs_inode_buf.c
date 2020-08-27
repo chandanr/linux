@@ -284,8 +284,8 @@ xfs_inode_to_disk(
 	to->di_size = cpu_to_be64(from->di_size);
 	to->di_nblocks = cpu_to_be64(from->di_nblocks);
 	to->di_extsize = cpu_to_be32(from->di_extsize);
-	to->di_nextents = cpu_to_be32(xfs_ifork_nextents(&ip->i_df));
-	to->di_anextents = cpu_to_be16(xfs_ifork_nextents(ip->i_afp));
+	to->di_nextents_lo = cpu_to_be32(xfs_ifork_nextents(&ip->i_df));
+	to->di_anextents_lo = cpu_to_be16(xfs_ifork_nextents(ip->i_afp));
 	to->di_forkoff = from->di_forkoff;
 	to->di_aformat = xfs_ifork_format(ip->i_afp);
 	to->di_dmevmask = cpu_to_be32(from->di_dmevmask);
@@ -337,8 +337,8 @@ xfs_log_dinode_to_disk(
 	to->di_size = cpu_to_be64(from->di_size);
 	to->di_nblocks = cpu_to_be64(from->di_nblocks);
 	to->di_extsize = cpu_to_be32(from->di_extsize);
-	to->di_nextents = cpu_to_be32(from->di_nextents);
-	to->di_anextents = cpu_to_be16(from->di_anextents);
+	to->di_nextents_lo = cpu_to_be32(from->di_nextents_lo);
+	to->di_anextents_lo = cpu_to_be16(from->di_anextents_lo);
 	to->di_forkoff = from->di_forkoff;
 	to->di_aformat = from->di_aformat;
 	to->di_dmevmask = cpu_to_be32(from->di_dmevmask);
@@ -409,9 +409,9 @@ xfs_dfork_nextents(struct xfs_sb *sbp, struct xfs_dinode *dip, int whichfork)
 	xfs_extnum_t nextents;
 
 	if (whichfork == XFS_DATA_FORK)
-		nextents = be32_to_cpu(dip->di_nextents);
+		nextents = be32_to_cpu(dip->di_nextents_lo);
 	else
-		nextents = be16_to_cpu(dip->di_anextents);
+		nextents = be16_to_cpu(dip->di_anextents_lo);
 
 	return nextents;
 }

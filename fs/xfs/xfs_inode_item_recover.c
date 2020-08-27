@@ -256,7 +256,7 @@ xlog_recover_inode_commit_pass2(
 			goto out_release;
 		}
 	}
-	if (unlikely(ldip->di_nextents + ldip->di_anextents > ldip->di_nblocks)){
+	if (unlikely(ldip->di_nextents_lo + ldip->di_anextents_lo > ldip->di_nblocks)){
 		XFS_CORRUPTION_ERROR("xlog_recover_inode_pass2(5)",
 				     XFS_ERRLEVEL_LOW, mp, ldip,
 				     sizeof(*ldip));
@@ -264,7 +264,7 @@ xlog_recover_inode_commit_pass2(
 	"%s: Bad inode log record, rec ptr "PTR_FMT", dino ptr "PTR_FMT", "
 	"dino bp "PTR_FMT", ino %Ld, total extents = %d, nblocks = %Ld",
 			__func__, item, dip, bp, in_f->ilf_ino,
-			ldip->di_nextents + ldip->di_anextents,
+			ldip->di_nextents_lo + ldip->di_anextents_lo,
 			ldip->di_nblocks);
 		error = -EFSCORRUPTED;
 		goto out_release;

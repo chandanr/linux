@@ -326,8 +326,8 @@ xfs_inode_to_log_dinode(
 	to->di_size = from->di_size;
 	to->di_nblocks = from->di_nblocks;
 	to->di_extsize = from->di_extsize;
-	to->di_nextents = xfs_ifork_nextents(&ip->i_df);
-	to->di_anextents = xfs_ifork_nextents(ip->i_afp);
+	to->di_nextents_lo = xfs_ifork_nextents(&ip->i_df);
+	to->di_anextents_lo = xfs_ifork_nextents(ip->i_afp);
 	to->di_forkoff = from->di_forkoff;
 	to->di_aformat = xfs_ifork_format(ip->i_afp);
 	to->di_dmevmask = from->di_dmevmask;
