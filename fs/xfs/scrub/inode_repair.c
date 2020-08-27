@@ -603,7 +603,7 @@ xrep_dinode_bad_extents_fork(
 	xfs_extnum_t		nex;
 	int			fork_size;
 
-	nex = XFS_DFORK_NEXTENTS(dip, whichfork);
+	nex = xfs_dfork_nextents(dip, whichfork);
 	fork_size = nex * sizeof(struct xfs_bmbt_rec);
 	if (fork_size < 0 || fork_size > dfork_size)
 		return true;
@@ -637,7 +637,7 @@ xrep_dinode_bad_btree_fork(
 	int			nrecs;
 	int			level;
 
-	if (XFS_DFORK_NEXTENTS(dip, whichfork) <=
+	if (xfs_dfork_nextents(dip, whichfork) <=
 			dfork_size / sizeof(struct xfs_bmbt_rec))
 		return true;
 
@@ -832,11 +832,15 @@ xrep_dinode_ensure_forkoff(
 	struct xrep_dinode_stats	*dis)
 {
 	struct xfs_bmdr_block		*bmdr;
+	xfs_extnum_t			anextents, dnextents;
 	size_t				bmdr_minsz = xfs_bmdr_space_calc(1);
 	unsigned int			lit_sz = XFS_LITINO(sc->mp);
 	unsigned int			afork_min, dfork_min;
 
 	trace_xrep_dinode_ensure_forkoff(sc, dip);
+
+	dnextents = xfs_dfork_nextents(dip, XFS_DATA_FORK);
+	anextents = xfs_dfork_nextents(dip, XFS_ATTR_FORK);
 
 	/*
 	 * Before calling this function, xrep_dinode_core ensured that both
@@ -858,15 +862,14 @@ xrep_dinode_ensure_forkoff(
 		afork_min = XFS_DFORK_SIZE(dip, sc->mp, XFS_ATTR_FORK);
 		break;
 	case XFS_DINODE_FMT_EXTENTS:
-		if (dip->di_anextents) {
+		if (anextents) {
 			/*
 			 * We must maintain sufficient space to hold the entire
 			 * extent map array in the data fork.  Note that we
 			 * previously zapped the fork if it had no chance of
 			 * fitting in the inode.
 			 */
-			afork_min = sizeof(struct xfs_bmbt_rec) *
-						be16_to_cpu(dip->di_anextents);
+			afork_min = sizeof(struct xfs_bmbt_rec) * anextents;
 		} else if (dis->attr_extents > 0) {
 			/*
 			 * The attr fork thinks it has zero extents, but we
@@ -909,15 +912,14 @@ xrep_dinode_ensure_forkoff(
 		dfork_min = be64_to_cpu(dip->di_size);
 		break;
 	case XFS_DINODE_FMT_EXTENTS:
-		if (dip->di_nextents) {
+		if (dnextents) {
 			/*
 			 * We must maintain sufficient space to hold the entire
 			 * extent map array in the data fork.  Note that we
 			 * previously zapped the fork if it had no chance of
 			 * fitting in the inode.
 			 */
-			dfork_min = sizeof(struct xfs_bmbt_rec) *
-						be32_to_cpu(dip->di_nextents);
+			dfork_min = sizeof(struct xfs_bmbt_rec) * dnextents;
 		} else if (dis->data_extents > 0 || dis->rt_extents > 0) {
 			/*
 			 * The data fork thinks it has zero extents, but we
@@ -957,7 +959,7 @@ xrep_dinode_ensure_forkoff(
 	 * recovery fork, move the attr fork up.
 	 */
 	if (dip->di_format == XFS_DINODE_FMT_EXTENTS &&
-	    dip->di_nextents == 0 &&
+	    dnextents == 0 &&
 	    (dis->data_extents > 0 || dis->rt_extents > 0) &&
 	    bmdr_minsz > XFS_DFORK_DSIZE(dip, sc->mp)) {
 		if (bmdr_minsz + afork_min > lit_sz) {
@@ -983,7 +985,7 @@ xrep_dinode_ensure_forkoff(
 	 * recovery fork, move the attr fork down.
 	 */
 	if (dip->di_aformat == XFS_DINODE_FMT_EXTENTS &&
-	    dip->di_anextents == 0 &&
+	    anextents == 0 &&
 	    dis->attr_extents > 0 &&
 	    bmdr_minsz > XFS_DFORK_ASIZE(dip, sc->mp)) {
 		if (dip->di_format == XFS_DINODE_FMT_BTREE) {
@@ -1020,6 +1022,9 @@ xrep_dinode_zap_forks(
 	struct xfs_dinode		*dip,
 	struct xrep_dinode_stats	*dis)
 {
+	xfs_rfsblock_t			nblocks;
+	xfs_extnum_t			nextents;
+	xfs_extnum_t			naextents;
 	uint16_t			mode;
 	bool				zap_datafork = false;
 	bool				zap_attrfork = false;
@@ -1029,12 +1034,17 @@ xrep_dinode_zap_forks(
 	mode = be16_to_cpu(dip->di_mode);
 
 	/* Inode counters don't make sense? */
-	if (be32_to_cpu(dip->di_nextents) > be64_to_cpu(dip->di_nblocks))
+	nblocks = be64_to_cpu(dip->di_nblocks);
+
+	nextents = xfs_dfork_nextents(dip, XFS_DATA_FORK);
+	if (nextents > nblocks)
 		zap_datafork = true;
-	if (be16_to_cpu(dip->di_anextents) > be64_to_cpu(dip->di_nblocks))
+
+	naextents = xfs_dfork_nextents(dip, XFS_ATTR_FORK);
+	if (naextents > nblocks)
 		zap_attrfork = true;
-	if (be32_to_cpu(dip->di_nextents) + be16_to_cpu(dip->di_anextents) >
-			be64_to_cpu(dip->di_nblocks))
+
+	if (nextents + naextents > nblocks)
 		zap_datafork = zap_attrfork = true;
 
 	if (!zap_datafork)
