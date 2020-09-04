@@ -24,6 +24,7 @@
 #include "xfs_dir2_priv.h"
 #include "xfs_attr_leaf.h"
 #include "xfs_types.h"
+#include "xfs_errortag.h"
 
 kmem_zone_t *xfs_ifork_zone;
 
@@ -746,6 +747,12 @@ xfs_iext_count_may_overflow(
 	max_exts = (whichfork == XFS_ATTR_FORK) ? MAXAEXTNUM : MAXEXTNUM;
 
 	nr_exts = ifp->if_nextents + nr_to_add;
+
+	if (XFS_TEST_ERROR(false, ip->i_mount,
+		XFS_ERRTAG_REDUCE_MAX_IEXTENTS) &&
+		nr_exts > MAXERRTAGEXTNUM)
+		return -EFBIG;
+
 	if (nr_exts < ifp->if_nextents || nr_exts > max_exts)
 		return -EFBIG;
 

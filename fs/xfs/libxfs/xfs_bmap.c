@@ -2729,11 +2729,14 @@ xfs_bmap_add_extent_hole_real(
 	int			rval=0;	/* return value (logging flags) */
 	int			state = xfs_bmap_fork_to_state(whichfork);
 	struct xfs_bmbt_irec	old;
+	int			test_iext_overflow;
 
 	ASSERT(!isnullstartblock(new->br_startblock));
 	ASSERT(!cur || !(cur->bc_ino.flags & XFS_BTCUR_BMBT_WASDEL));
 
 	XFS_STATS_INC(mp, xs_add_exlist);
+	test_iext_overflow = XFS_TEST_ERROR(false, ip->i_mount,
+				XFS_ERRTAG_REDUCE_MAX_IEXTENTS);
 
 	/*
 	 * Check and set flags if this segment has a left neighbor.
@@ -2762,7 +2765,8 @@ xfs_bmap_add_extent_hole_real(
 	    left.br_startoff + left.br_blockcount == new->br_startoff &&
 	    left.br_startblock + left.br_blockcount == new->br_startblock &&
 	    left.br_state == new->br_state &&
-	    left.br_blockcount + new->br_blockcount <= MAXEXTLEN)
+	    left.br_blockcount + new->br_blockcount <= MAXEXTLEN &&
+	    !test_iext_overflow)
 		state |= BMAP_LEFT_CONTIG;
 
 	if ((state & BMAP_RIGHT_VALID) && !(state & BMAP_RIGHT_DELAY) &&
@@ -2772,7 +2776,8 @@ xfs_bmap_add_extent_hole_real(
 	    new->br_blockcount + right.br_blockcount <= MAXEXTLEN &&
 	    (!(state & BMAP_LEFT_CONTIG) ||
 	     left.br_blockcount + new->br_blockcount +
-	     right.br_blockcount <= MAXEXTLEN))
+	     right.br_blockcount <= MAXEXTLEN) &&
+	    !test_iext_overflow)
 		state |= BMAP_RIGHT_CONTIG;
 
 	error = 0;

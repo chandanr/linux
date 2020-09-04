@@ -18,6 +18,8 @@
 #include "xfs_trans_space.h"
 #include "xfs_icache.h"
 #include "xfs_rtalloc.h"
+#include "xfs_error.h"
+#include "xfs_errortag.h"
 
 
 /*
@@ -769,17 +771,27 @@ xfs_growfs_rt_alloc(
 	int			resblks;	/* space reservation */
 	enum xfs_blft		buf_type;
 	struct xfs_trans	*tp;
+	xfs_extlen_t		nr_blks_alloc;
+	int			test_iext_overflow;
 
 	if (ip == mp->m_rsumip)
 		buf_type = XFS_BLFT_RTSUMMARY_BUF;
 	else
 		buf_type = XFS_BLFT_RTBITMAP_BUF;
 
+	test_iext_overflow = XFS_TEST_ERROR(false, ip->i_mount,
+				XFS_ERRTAG_REDUCE_MAX_IEXTENTS);
+
 	/*
 	 * Allocate space to the file, as necessary.
 	 */
 	while (oblocks < nblocks) {
-		resblks = XFS_GROWFSRT_SPACE_RES(mp, nblocks - oblocks);
+		if (test_iext_overflow)
+			nr_blks_alloc = 1;
+		else
+			nr_blks_alloc = nblocks - oblocks;
+
+		resblks = XFS_GROWFSRT_SPACE_RES(mp, nr_blks_alloc);
 		/*
 		 * Reserve space & log for one extent added to the file.
 		 */
@@ -802,7 +814,7 @@ xfs_growfs_rt_alloc(
 		 * Allocate blocks to the bitmap file.
 		 */
 		nmap = 1;
-		error = xfs_bmapi_write(tp, ip, oblocks, nblocks - oblocks,
+		error = xfs_bmapi_write(tp, ip, oblocks, nr_blks_alloc,
 					XFS_BMAPI_METADATA, 0, &map, &nmap);
 		if (!error && nmap < 1)
 			error = -ENOSPC;
@@ -843,6 +855,7 @@ xfs_growfs_rt_alloc(
 				goto out_trans_cancel;
 
 			xfs_trans_buf_set_type(tp, bp, buf_type);
+			bp->b_ops = &xfs_rtbuf_ops;
 			memset(bp->b_addr, 0, mp->m_sb.sb_blocksize);
 			xfs_trans_log_buf(tp, bp, 0, mp->m_sb.sb_blocksize - 1);
 			/*
