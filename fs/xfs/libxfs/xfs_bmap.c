@@ -3516,7 +3516,6 @@ xfs_bmap_process_allocated_extent(
 	xfs_fileoff_t		orig_offset,
 	xfs_extlen_t		orig_length)
 {
-	struct xfs_mount	*mp = ap->ip->i_mount;
 	int			nullfb;
 
 	nullfb = ap->tp->t_firstblock == NULLFSBLOCK;
@@ -3526,8 +3525,8 @@ xfs_bmap_process_allocated_extent(
 	 * the first block that was allocated.
 	 */
 	ASSERT(nullfb ||
-		XFS_FSB_TO_AGNO(mp, ap->tp->t_firstblock) <=
-		XFS_FSB_TO_AGNO(mp, args->fsbno));
+		XFS_FSB_TO_AGNO(args->mp, ap->tp->t_firstblock) <=
+		XFS_FSB_TO_AGNO(args->mp, args->fsbno));
 
 	ap->blkno = args->fsbno;
 	if (nullfb)
@@ -3551,6 +3550,71 @@ xfs_bmap_process_allocated_extent(
 		ap->offset = orig_offset + orig_length - ap->length;
 	xfs_bmap_btalloc_accounting(ap, args);
 }
+
+#ifdef DEBUG
+static int
+xfs_bmap_exact_minlen_extent_alloc(
+	struct xfs_bmalloca	*ap)
+{
+	struct xfs_alloc_arg	args;
+	struct xfs_mount	*mp = ap->ip->i_mount;
+	xfs_fileoff_t		orig_offset;
+	xfs_extlen_t		orig_length;
+	int			stripe_align;
+	int			error;
+
+	ASSERT(ap->length);
+	orig_offset = ap->offset;
+	orig_length = ap->length;
+
+	memset(&args, 0, sizeof(args));
+	args.alloc_minlen_only = 1;
+	args.tp = ap->tp;
+	args.mp = mp;
+
+	xfs_bmap_compute_alignments(ap, &args, &stripe_align);
+
+	if (ap->tp->t_firstblock == NULLFSBLOCK) {
+		/*
+		 * Unlike the longest extent available in an AG, we don't track
+		 * the length of an AG's shortest extent.
+		 * XFS_ERRTAG_BMAP_ALLOC_MINLEN_EXTENT is a debug only knob and
+		 * hence we can afford to start traversing from the 0th AG since
+		 * we need not worry about a drop in performance in "debug only"
+		 * code paths.
+		 */
+		ap->blkno = XFS_AGB_TO_FSB(mp, 0, 0);
+	} else {
+		ap->blkno = ap->tp->t_firstblock;
+	}
+
+	args.fsbno = ap->blkno;
+	args.oinfo = XFS_RMAP_OINFO_SKIP_UPDATE;
+	args.type = XFS_ALLOCTYPE_FIRST_AG;
+	args.total = args.minlen = args.maxlen = ap->minlen;
+
+	args.alignment = 1;
+	args.minalignslop = 0;
+
+	args.minleft = ap->minleft;
+	args.wasdel = ap->wasdel;
+	args.resv = XFS_AG_RESV_NONE;
+	args.datatype = ap->datatype;
+
+	error = xfs_alloc_vextent(&args);
+	if (error)
+		return error;
+
+	if (args.fsbno != NULLFSBLOCK) {
+		xfs_bmap_process_allocated_extent(ap, &args, orig_offset, orig_length);
+	} else {
+		ap->blkno = NULLFSBLOCK;
+		ap->length = 0;
+	}
+
+	return 0;
+}
+#endif
 
 STATIC int
 xfs_bmap_btalloc(
@@ -4112,7 +4176,13 @@ xfs_bmap_alloc_userdata(
 			return xfs_bmap_rtalloc(bma);
 	}
 
-	return xfs_bmap_btalloc(bma);
+#ifdef DEBUG
+	if (unlikely(XFS_TEST_ERROR(false, mp,
+			XFS_ERRTAG_BMAP_ALLOC_MINLEN_EXTENT)))
+		return xfs_bmap_exact_minlen_extent_alloc(bma);
+	else
+#endif
+		return xfs_bmap_btalloc(bma);
 }
 
 static int
@@ -4148,10 +4218,19 @@ xfs_bmapi_allocate(
 	else
 		bma->minlen = 1;
 
-	if (bma->flags & XFS_BMAPI_METADATA)
-		error = xfs_bmap_btalloc(bma);
-	else
+	if (bma->flags & XFS_BMAPI_METADATA) {
+#ifdef DEBUG
+		if (unlikely(XFS_TEST_ERROR(false, mp,
+				XFS_ERRTAG_BMAP_ALLOC_MINLEN_EXTENT)))
+			error = xfs_bmap_exact_minlen_extent_alloc(bma);			
+		else
+#endif
+			error = xfs_bmap_btalloc(bma);
+
+
+	} else {
 		error = xfs_bmap_alloc_userdata(bma);
+	}
 	if (error || bma->blkno == NULLFSBLOCK)
 		return error;
 
