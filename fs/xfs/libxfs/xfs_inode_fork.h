@@ -137,9 +137,9 @@ static inline xfs_extnum_t xfs_iext_max_nextents(struct xfs_mount *mp,
 		int whichfork)
 {
 	if (whichfork == XFS_DATA_FORK || whichfork == XFS_COW_FORK)
-		return MAXEXTNUM;
+		return XFS_IFORK_EXTCNT_MAXS32;
 
-	return MAXAEXTNUM;
+	return XFS_IFORK_EXTCNT_MAXS16;
 }
 
 struct xfs_ifork *xfs_ifork_alloc(enum xfs_dinode_fmt format,
