@@ -365,9 +365,9 @@ xfs_dinode_verify_fork(
 		break;
 	case XFS_DINODE_FMT_BTREE:
 		if (whichfork == XFS_ATTR_FORK) {
-			if (di_nextents > MAXAEXTNUM)
+			if (di_nextents > XFS_IFORK_EXTCNT_MAXS16)
 				return __this_address;
-		} else if (di_nextents > MAXEXTNUM) {
+		} else if (di_nextents > XFS_IFORK_EXTCNT_MAXS32) {
 			return __this_address;
 		}
 		break;
