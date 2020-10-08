@@ -1029,7 +1029,7 @@ xfs_growfs_rt(
 		/*
 		 * Lock out other callers by grabbing the bitmap inode lock.
 		 */
-		xfs_ilock(mp->m_rbmip, XFS_ILOCK_EXCL);
+		xfs_ilock(mp->m_rbmip, XFS_ILOCK_EXCL | XFS_ILOCK_RTBITMAP);
 		xfs_trans_ijoin(tp, mp->m_rbmip, XFS_ILOCK_EXCL);
 		/*
 		 * Update the bitmap inode's size.
@@ -1040,7 +1040,7 @@ xfs_growfs_rt(
 		/*
 		 * Get the summary inode into the transaction.
 		 */
-		xfs_ilock(mp->m_rsumip, XFS_ILOCK_EXCL);
+		xfs_ilock(mp->m_rsumip, XFS_ILOCK_EXCL | XFS_ILOCK_RTSUM);
 		xfs_trans_ijoin(tp, mp->m_rsumip, XFS_ILOCK_EXCL);
 		/*
 		 * Update the summary inode's size.
