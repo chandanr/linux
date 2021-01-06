@@ -32,6 +32,7 @@
 #include "xfs_extent_busy.h"
 #include "xfs_health.h"
 #include "xfs_trace.h"
+#include "xfs_imeta.h"
 
 static DEFINE_MUTEX(xfs_uuid_table_mutex);
 static int xfs_uuid_table_size;
@@ -654,6 +655,22 @@ xfs_check_summary_counts(
 	return xfs_initialize_perag_data(mp, mp->m_sb.sb_agcount);
 }
 
+STATIC int
+xfs_mountfs_imeta(
+	struct xfs_mount	*mp)
+{
+	int			error;
+
+	error = xfs_imeta_mount(mp);
+	if (error) {
+		xfs_warn(mp, "Failed to load metadata inode info, error %d",
+				error);
+		return error;
+	}
+
+	return 0;
+}
+
 /*
  * Flush and reclaim dirty inodes in preparation for unmount. Inodes and
  * internal inode structures can be sitting in the CIL and AIL at this point,
@@ -932,6 +949,11 @@ xfs_mountfs(
 	/* Enable background inode inactivation workers. */
 	xfs_inodegc_start(mp);
 	xfs_blockgc_start(mp);
+
+	/* Load the metadata directory tree. */
+	error = xfs_mountfs_imeta(mp);
+	if (error)
+		goto out_log_dealloc;
 
 	/*
 	 * Get and sanity-check the root inode.
