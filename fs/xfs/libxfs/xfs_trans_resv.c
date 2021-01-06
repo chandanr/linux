@@ -842,18 +842,11 @@ xfs_trans_resv_calc(
 	 * require a permanent reservation on space.
 	 */
 	resp->tr_write.tr_logres = xfs_calc_write_reservation(mp);
-	if (xfs_sb_version_hasreflink(&mp->m_sb))
-		resp->tr_write.tr_logcount = XFS_WRITE_LOG_COUNT_REFLINK;
-	else
-		resp->tr_write.tr_logcount = XFS_WRITE_LOG_COUNT;
+	resp->tr_write.tr_logcount = XFS_WRITE_LOG_COUNT;
 	resp->tr_write.tr_logflags |= XFS_TRANS_PERM_LOG_RES;
 
 	resp->tr_itruncate.tr_logres = xfs_calc_itruncate_reservation(mp);
-	if (xfs_sb_version_hasreflink(&mp->m_sb))
-		resp->tr_itruncate.tr_logcount =
-				XFS_ITRUNCATE_LOG_COUNT_REFLINK;
-	else
-		resp->tr_itruncate.tr_logcount = XFS_ITRUNCATE_LOG_COUNT;
+	resp->tr_itruncate.tr_logcount = XFS_ITRUNCATE_LOG_COUNT;
 	resp->tr_itruncate.tr_logflags |= XFS_TRANS_PERM_LOG_RES;
 
 	resp->tr_rename.tr_logres = xfs_calc_rename_reservation(mp);
@@ -910,10 +903,7 @@ xfs_trans_resv_calc(
 	resp->tr_growrtalloc.tr_logflags |= XFS_TRANS_PERM_LOG_RES;
 
 	resp->tr_qm_dqalloc.tr_logres = xfs_calc_qm_dqalloc_reservation(mp);
-	if (xfs_sb_version_hasreflink(&mp->m_sb))
-		resp->tr_qm_dqalloc.tr_logcount = XFS_WRITE_LOG_COUNT_REFLINK;
-	else
-		resp->tr_qm_dqalloc.tr_logcount = XFS_WRITE_LOG_COUNT;
+	resp->tr_qm_dqalloc.tr_logcount = XFS_WRITE_LOG_COUNT;
 	resp->tr_qm_dqalloc.tr_logflags |= XFS_TRANS_PERM_LOG_RES;
 
 	/*
@@ -946,6 +936,28 @@ xfs_trans_resv_calc(
 	resp->tr_clearagi.tr_logres = xfs_calc_clear_agi_bucket_reservation(mp);
 	resp->tr_growrtzero.tr_logres = xfs_calc_growrtzero_reservation(mp);
 	resp->tr_growrtfree.tr_logres = xfs_calc_growrtfree_reservation(mp);
+
+	/* Add one logcount for BUI items that appear with rmap or reflink. */
+	if (xfs_sb_version_hasreflink(&mp->m_sb) ||
+	    xfs_sb_version_hasrmapbt(&mp->m_sb)) {
+		resp->tr_itruncate.tr_logcount++;
+		resp->tr_write.tr_logcount++;
+		resp->tr_qm_dqalloc.tr_logcount++;
+	}
+
+	/* Add one logcount for refcount intent items. */
+	if (xfs_sb_version_hasreflink(&mp->m_sb)) {
+		resp->tr_itruncate.tr_logcount++;
+		resp->tr_write.tr_logcount++;
+		resp->tr_qm_dqalloc.tr_logcount++;
+	}
+
+	/* Add one logcount for rmap intent items. */
+	if (xfs_sb_version_hasrmapbt(&mp->m_sb)) {
+		resp->tr_itruncate.tr_logcount++;
+		resp->tr_write.tr_logcount++;
+		resp->tr_qm_dqalloc.tr_logcount++;
+	}
 }
 
 /*
@@ -957,5 +969,26 @@ xfs_trans_resv_calc_logsize(
 	struct xfs_mount	*mp,
 	struct xfs_trans_resv	*resp)
 {
+	ASSERT(resp != M_RES(mp));
+
 	xfs_trans_resv_calc(mp, resp);
+
+	if (xfs_sb_version_hasreflink(&mp->m_sb)) {
+		/*
+		 * In the early days of reflink we set the logcounts absurdly
+		 * high.
+		 */
+		resp->tr_write.tr_logcount = XFS_WRITE_LOG_COUNT_REFLINK;
+		resp->tr_itruncate.tr_logcount =
+				XFS_ITRUNCATE_LOG_COUNT_REFLINK;
+		resp->tr_qm_dqalloc.tr_logcount = XFS_WRITE_LOG_COUNT_REFLINK;
+	} else if (xfs_sb_version_hasrmapbt(&mp->m_sb)) {
+		/*
+		 * In the early days of non-reflink rmap we set the logcount
+		 * too low.
+		 */
+		resp->tr_write.tr_logcount = XFS_WRITE_LOG_COUNT;
+		resp->tr_itruncate.tr_logcount = XFS_ITRUNCATE_LOG_COUNT;
+		resp->tr_qm_dqalloc.tr_logcount = XFS_WRITE_LOG_COUNT;
+	}
 }
