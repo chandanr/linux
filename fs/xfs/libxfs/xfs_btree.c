@@ -2941,6 +2941,7 @@ xfs_btree_promote_leaf_iroot(
 	/* Zap the old root and change the tree height. */
 	xfs_iroot_free(cur->bc_ino.ip, cur->bc_ino.whichfork);
 	cur->bc_nlevels++;
+	ASSERT(cur->bc_nlevels <= XFS_BTREE_MAXLEVELS);
 	cur->bc_ptrs[1] = 1;
 
 	/*
@@ -2996,6 +2997,7 @@ xfs_btree_promote_node_iroot(
 	 */
 	be16_add_cpu(&block->bb_level, 1);
 	cur->bc_nlevels++;
+	ASSERT(cur->bc_nlevels <= XFS_BTREE_MAXLEVELS);
 	cur->bc_ptrs[level + 1] = 1;
 
 	/*
@@ -3231,6 +3233,7 @@ xfs_btree_new_root(
 	xfs_btree_setbuf(cur, cur->bc_nlevels, nbp);
 	cur->bc_ptrs[cur->bc_nlevels] = nptr;
 	cur->bc_nlevels++;
+	ASSERT(cur->bc_nlevels <= XFS_BTREE_MAXLEVELS);
 	*stat = 1;
 	return 0;
 error0:
