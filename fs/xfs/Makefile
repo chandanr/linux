@@ -137,6 +137,7 @@ xfs-y				+= $(addprefix scrub/, \
 				   trace.o \
 				   agheader.o \
 				   alloc.o \
+				   array.o \
 				   attr.o \
 				   bmap.o \
 				   btree.o \
@@ -152,6 +153,7 @@ xfs-y				+= $(addprefix scrub/, \
 				   rmap.o \
 				   scrub.o \
 				   symlink.o \
+				   xfile.o \
 				   )
 
 xfs-$(CONFIG_XFS_RT)		+= scrub/rtbitmap.o
