@@ -1136,16 +1136,26 @@ TRACE_EVENT(xrep_calc_ag_resblks_btsize,
 		  __entry->refcbt_sz)
 )
 TRACE_EVENT(xrep_reset_counters,
-	TP_PROTO(struct xfs_mount *mp),
-	TP_ARGS(mp),
+	TP_PROTO(struct xfs_mount *mp, int64_t icount_adj, int64_t ifree_adj,
+		 int64_t fdblocks_adj),
+	TP_ARGS(mp, icount_adj, ifree_adj, fdblocks_adj),
 	TP_STRUCT__entry(
 		__field(dev_t, dev)
+		__field(int64_t, icount_adj)
+		__field(int64_t, ifree_adj)
+		__field(int64_t, fdblocks_adj)
 	),
 	TP_fast_assign(
 		__entry->dev = mp->m_super->s_dev;
+		__entry->icount_adj = icount_adj;
+		__entry->ifree_adj = ifree_adj;
+		__entry->fdblocks_adj = fdblocks_adj;
 	),
-	TP_printk("dev %d:%d",
-		  MAJOR(__entry->dev), MINOR(__entry->dev))
+	TP_printk("dev %d:%d icount %lld ifree %lld fdblocks %lld",
+		  MAJOR(__entry->dev), MINOR(__entry->dev),
+		  __entry->icount_adj,
+		  __entry->ifree_adj,
+		  __entry->fdblocks_adj)
 )
 
 DECLARE_EVENT_CLASS(xrep_newbt_extent_class,
