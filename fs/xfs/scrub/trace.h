@@ -1307,6 +1307,32 @@ TRACE_EVENT(xrep_dinode_count_rmaps,
 		  __entry->block0)
 );
 
+DECLARE_EVENT_CLASS(xrep_dquot_class,
+	TP_PROTO(struct xfs_mount *mp, uint8_t type, uint32_t id),
+	TP_ARGS(mp, type, id),
+	TP_STRUCT__entry(
+		__field(dev_t, dev)
+		__field(uint8_t, type)
+		__field(uint32_t, id)
+	),
+	TP_fast_assign(
+		__entry->dev = mp->m_super->s_dev;
+		__entry->id = id;
+		__entry->type = type;
+	),
+	TP_printk("dev %d:%d type %s id 0x%x",
+		  MAJOR(__entry->dev), MINOR(__entry->dev),
+		  __print_flags(__entry->type, "|", XFS_DQTYPE_STRINGS),
+		  __entry->id)
+);
+
+#define DEFINE_XREP_DQUOT_EVENT(name) \
+DEFINE_EVENT(xrep_dquot_class, name, \
+	TP_PROTO(struct xfs_mount *mp, uint8_t type, uint32_t id), \
+	TP_ARGS(mp, type, id))
+DEFINE_XREP_DQUOT_EVENT(xrep_dquot_item);
+DEFINE_XREP_DQUOT_EVENT(xrep_disk_dquot);
+
 #endif /* IS_ENABLED(CONFIG_XFS_ONLINE_REPAIR) */
 
 #endif /* _TRACE_XFS_SCRUB_TRACE_H */
