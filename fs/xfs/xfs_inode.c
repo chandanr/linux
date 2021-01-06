@@ -1946,33 +1946,10 @@ xfs_ifree(
 
 	pag = xfs_perag_get(mp, XFS_INO_TO_AGNO(mp, ip->i_ino));
 
-	/*
-	 * Pull the on-disk inode from the AGI unlinked list.
-	 */
-	error = xfs_iunlink_remove(tp, pag, ip);
+	error = xfs_dir_ifree(tp, pag, ip, &xic);
 	if (error)
 		goto out;
 
-	error = xfs_difree(tp, pag, ip->i_ino, &xic);
-	if (error)
-		goto out;
-
-	/*
-	 * Free any local-format data sitting around before we reset the
-	 * data fork to extents format.  Note that the attr fork data has
-	 * already been freed by xfs_attr_inactive.
-	 */
-	if (ip->i_df.if_format == XFS_DINODE_FMT_LOCAL) {
-		kmem_free(ip->i_df.if_u1.if_data);
-		ip->i_df.if_u1.if_data = NULL;
-		ip->i_df.if_bytes = 0;
-	}
-
-	VFS_I(ip)->i_mode = 0;		/* mark incore inode as free */
-	ip->i_diflags = 0;
-	ip->i_diflags2 = mp->m_ino_geo.new_diflags2;
-	ip->i_forkoff = 0;		/* mark the attr fork not in use */
-	ip->i_df.if_format = XFS_DINODE_FMT_EXTENTS;
 	if (xfs_iflags_test(ip, XFS_IPRESERVE_DM_FIELDS))
 		xfs_iflags_clear(ip, XFS_IPRESERVE_DM_FIELDS);
 
@@ -1980,13 +1957,6 @@ xfs_ifree(
 	spin_lock(&iip->ili_lock);
 	iip->ili_fields &= ~(XFS_ILOG_AOWNER | XFS_ILOG_DOWNER);
 	spin_unlock(&iip->ili_lock);
-
-	/*
-	 * Bump the generation count so no one will be confused
-	 * by reincarnations of this inode.
-	 */
-	VFS_I(ip)->i_generation++;
-	xfs_trans_log_inode(tp, ip, XFS_ILOG_CORE);
 
 	if (xic.deleted)
 		error = xfs_ifree_cluster(tp, pag, ip, &xic);
