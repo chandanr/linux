@@ -651,6 +651,25 @@ TRACE_EVENT(xchk_fscounters_within_range,
 		  __entry->old_value)
 )
 
+TRACE_EVENT(xchk_fscounters_frextents_within_range,
+	TP_PROTO(struct xfs_mount *mp, uint64_t expected, int64_t curr_value),
+	TP_ARGS(mp, expected, curr_value),
+	TP_STRUCT__entry(
+		__field(dev_t, dev)
+		__field(uint64_t, expected)
+		__field(int64_t, curr_value)
+	),
+	TP_fast_assign(
+		__entry->dev = mp->m_super->s_dev;
+		__entry->expected = expected;
+		__entry->curr_value = curr_value;
+	),
+	TP_printk("dev %d:%d expected %llu curr_value %lld",
+		  MAJOR(__entry->dev), MINOR(__entry->dev),
+		  __entry->expected,
+		  __entry->curr_value)
+)
+
 /* repair tracepoints */
 #if IS_ENABLED(CONFIG_XFS_ONLINE_REPAIR)
 

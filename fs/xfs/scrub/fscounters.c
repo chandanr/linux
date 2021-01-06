@@ -14,6 +14,8 @@
 #include "xfs_ialloc.h"
 #include "xfs_health.h"
 #include "xfs_btree.h"
+#include "xfs_rtalloc.h"
+#include "xfs_inode.h"
 #include "scrub/scrub.h"
 #include "scrub/common.h"
 #include "scrub/trace.h"
@@ -277,6 +279,53 @@ retry:
 	return 0;
 }
 
+static inline int
+xchk_fscount_add_frextent(
+	struct xfs_trans	*tp,
+	struct xfs_rtalloc_rec	*rec,
+	void			*priv)
+{
+	struct xchk_fscounters	*fsc = priv;
+
+	fsc->frextents += rec->ar_extcount;
+	return 0;
+}
+
+/*
+ * Calculate what the superblock free realtime extent count should be given the
+ * realtime bitmap.
+ */
+STATIC int
+xchk_fscount_check_frextents(
+	struct xfs_scrub	*sc,
+	struct xchk_fscounters	*fsc)
+{
+	struct xfs_mount	*mp = sc->mp;
+	int			error;
+
+	if (!xfs_sb_version_hasrealtime(&mp->m_sb))
+		return 0;
+
+	fsc->frextents = 0;
+	xfs_ilock(sc->mp->m_rbmip, XFS_ILOCK_EXCL);
+	error = xfs_rtalloc_query_all(sc->tp, xchk_fscount_add_frextent, fsc);
+	if (error)
+		goto out_unlock;
+
+	spin_lock(&mp->m_sb_lock);
+
+	trace_xchk_fscounters_frextents_within_range(sc->mp, fsc->frextents,
+			mp->m_sb.sb_frextents);
+
+	if (fsc->frextents != mp->m_sb.sb_frextents)
+		xchk_set_corrupt(sc);
+	spin_unlock(&mp->m_sb_lock);
+
+out_unlock:
+	xfs_iunlock(sc->mp->m_rbmip, XFS_ILOCK_EXCL);
+	return error;
+}
+
 /*
  * Is the @counter reasonably close to the @expected value?
  *
@@ -387,6 +436,11 @@ xchk_fscounters(
 	if (!xchk_fscount_within_range(sc, fdblocks, &mp->m_fdblocks,
 			fsc->fdblocks))
 		xchk_set_corrupt(sc);
+
+	/* Check the free extents counter for rt volumes. */
+	error = xchk_fscount_check_frextents(sc, fsc);
+	if (!xchk_process_error(sc, 0, XFS_SB_BLOCK(mp), &error))
+		return error;
 
 	return 0;
 }
