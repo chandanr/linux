@@ -36,6 +36,7 @@
 #include "xfs_bmap_item.h"
 #include "xfs_reflink.h"
 #include "xfs_pwork.h"
+#include "xfs_swapext_item.h"
 
 #include <linux/magic.h>
 #include <linux/fs_context.h>
@@ -2082,8 +2083,24 @@ xfs_init_zones(void)
 	if (!xfs_bui_zone)
 		goto out_destroy_bud_zone;
 
+	xfs_sxd_zone = kmem_cache_create("xfs_sxd_item",
+					 sizeof(struct xfs_sxd_log_item),
+					 0, 0, NULL);
+	if (!xfs_sxd_zone)
+		goto out_destroy_bui_zone;
+
+	xfs_sxi_zone = kmem_cache_create("xfs_sxi_item",
+					 sizeof(struct xfs_sxi_log_item),
+					 0, 0, NULL);
+	if (!xfs_sxi_zone)
+		goto out_destroy_sxd_zone;
+
 	return 0;
 
+ out_destroy_sxd_zone:
+	kmem_cache_destroy(xfs_sxd_zone);
+ out_destroy_bui_zone:
+	kmem_cache_destroy(xfs_bui_zone);
  out_destroy_bud_zone:
 	kmem_cache_destroy(xfs_bud_zone);
  out_destroy_cui_zone:

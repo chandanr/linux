@@ -1775,6 +1775,8 @@ static const struct xlog_recover_item_ops *xlog_recover_item_ops[] = {
 	&xlog_cud_item_ops,
 	&xlog_bui_item_ops,
 	&xlog_bud_item_ops,
+	&xlog_sxi_item_ops,
+	&xlog_sxd_item_ops,
 };
 
 static const struct xlog_recover_item_ops *
