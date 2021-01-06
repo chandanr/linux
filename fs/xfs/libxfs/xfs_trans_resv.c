@@ -902,6 +902,56 @@ xfs_calc_sb_reservation(
 	return xfs_calc_buf_res(1, mp->m_sb.sb_sectsize);
 }
 
+/*
+ * Metadata inode creation needs enough space to create or mkdir a directory,
+ * plus logging the superblock.
+ */
+static unsigned int
+xfs_calc_imeta_create_resv(
+	struct xfs_mount	*mp,
+	struct xfs_trans_resv	*resp)
+{
+	unsigned int		ret;
+
+	ret = xfs_calc_buf_res(1, mp->m_sb.sb_sectsize);
+	ret += resp->tr_create.tr_logres;
+	return ret;
+}
+
+/* Metadata inode creation needs enough rounds to create or mkdir a directory */
+static int
+xfs_calc_imeta_create_count(
+	struct xfs_mount	*mp,
+	struct xfs_trans_resv	*resp)
+{
+	return resp->tr_create.tr_logcount;
+}
+
+/*
+ * Metadata inode unlink needs enough space to remove a file plus logging the
+ * superblock.
+ */
+static unsigned int
+xfs_calc_imeta_unlink_resv(
+	struct xfs_mount	*mp,
+	struct xfs_trans_resv	*resp)
+{
+	unsigned int		ret;
+
+	ret = xfs_calc_buf_res(1, mp->m_sb.sb_sectsize);
+	ret += resp->tr_remove.tr_logres;
+	return ret;
+}
+
+/* Metadata inode creation needs enough rounds to remove a file. */
+static int
+xfs_calc_imeta_unlink_count(
+	struct xfs_mount	*mp,
+	struct xfs_trans_resv	*resp)
+{
+	return resp->tr_remove.tr_logcount;
+}
+
 void
 xfs_trans_resv_calc(
 	struct xfs_mount	*mp,
@@ -1030,8 +1080,22 @@ xfs_trans_resv_calc(
 	}
 
 	/* metadata inode creation and unlink */
-	resp->tr_imeta_create = resp->tr_create;
-	resp->tr_imeta_unlink = resp->tr_remove;
+	if (xfs_sb_version_hasmetadir(&mp->m_sb)) {
+		resp->tr_imeta_create.tr_logres =
+				xfs_calc_imeta_create_resv(mp, resp);
+		resp->tr_imeta_create.tr_logcount =
+				xfs_calc_imeta_create_count(mp, resp);
+		resp->tr_imeta_create.tr_logflags |= XFS_TRANS_PERM_LOG_RES;
+
+		resp->tr_imeta_unlink.tr_logres =
+				xfs_calc_imeta_unlink_resv(mp, resp);
+		resp->tr_imeta_unlink.tr_logcount =
+				xfs_calc_imeta_unlink_count(mp, resp);
+		resp->tr_imeta_unlink.tr_logflags |= XFS_TRANS_PERM_LOG_RES;
+	} else {
+		resp->tr_imeta_create = resp->tr_create;
+		resp->tr_imeta_unlink = resp->tr_remove;
+	}
 }
 
 /*
@@ -1044,6 +1108,15 @@ xfs_trans_resv_calc_logsize(
 	struct xfs_trans_resv	*resp)
 {
 	ASSERT(resp != M_RES(mp));
+
+	/*
+	 * The metadata directory tree feature drops the oversized log
+	 * reservations introduced by reflink.
+	 */
+	if (xfs_sb_version_hasmetadir(&mp->m_sb)) {
+		xfs_trans_resv_calc(mp, resp);
+		return;
+	}
 
 	xfs_trans_resv_calc(mp, resp);
 
