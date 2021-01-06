@@ -185,6 +185,10 @@ xfs-y				+= $(addprefix scrub/, \
 				   symlink_repair.o \
 				   )
 
+xfs-$(CONFIG_XFS_RT)		+= $(addprefix scrub/, \
+				   rtsummary_repair.o \
+				   )
+
 xfs-$(CONFIG_XFS_QUOTA)		+= $(addprefix scrub/, \
 				   quota_repair.o \
 				   quotacheck_repair.o \
