@@ -35,6 +35,7 @@ int xrep_alloc_ag_block(struct xfs_scrub *sc,
 int xrep_init_btblock(struct xfs_scrub *sc, xfs_fsblock_t fsb,
 		struct xfs_buf **bpp, xfs_btnum_t btnum,
 		const struct xfs_buf_ops *ops);
+int xrep_setup_tempfile(struct xfs_scrub *sc, uint16_t mode);
 
 struct xbitmap;
 
@@ -206,6 +207,7 @@ xrep_rmapbt_setup(
 	return xchk_setup_ag_btree(sc, false);
 }
 
+#define xrep_setup_tempfile(sc, mode)	(0)
 #define xrep_revalidate_allocbt		(NULL)
 #define xrep_revalidate_iallocbt	(NULL)
 
