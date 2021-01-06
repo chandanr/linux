@@ -329,7 +329,7 @@ xrep_bmap_iroot_size(
 {
 	ASSERT(level > 0);
 
-	return xfs_bmap_broot_space_calc(cur->bc_mp, nr_this_level);
+	return xfs_bmap_broot_space_calc(cur->bc_mp, level, nr_this_level);
 }
 
 /* Update the inode counters. */

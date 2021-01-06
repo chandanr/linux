@@ -248,7 +248,8 @@ struct xfs_ifork_broot_ops {
 			bool leaf);
 
 	/* Calculate the bytes required for the incore btree root block. */
-	size_t (*size)(struct xfs_mount *mp, unsigned int nrecs);
+	size_t (*size)(struct xfs_mount *mp, unsigned int level,
+			unsigned int nrecs);
 
 	/*
 	 * Move an incore btree root from one buffer to another.  Note that
@@ -258,7 +259,7 @@ struct xfs_ifork_broot_ops {
 	void (*move)(struct xfs_inode *ip, int whichfork,
 			struct xfs_btree_block *dst_broot, size_t dst_bytes,
 			struct xfs_btree_block *src_broot, size_t src_bytes,
-			unsigned int numrecs);
+			unsigned int level, unsigned int numrecs);
 };
 
 void xfs_iroot_realloc(struct xfs_inode *ip, int whichfork,
