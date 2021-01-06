@@ -516,10 +516,8 @@ xrep_agfl_collect_blocks(
 	 * Drop the freesp meta blocks that are in use by btrees.
 	 * The remaining blocks /should/ be AGFL blocks.
 	 */
-	error = xbitmap_disunion(agfl_extents, &ra.agmetablocks);
+	xbitmap_disunion(agfl_extents, &ra.agmetablocks);
 	xbitmap_destroy(&ra.agmetablocks);
-	if (error)
-		return error;
 
 	/*
 	 * Calculate the new AGFL size.  If we found more blocks than fit in
