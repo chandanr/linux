@@ -136,7 +136,7 @@ xchk_btree_rec(
 	struct xfs_buf		*bp;
 
 	block = xfs_btree_get_block(cur, 0, &bp);
-	rec = xfs_btree_rec_addr(cur, cur->bc_ptrs[0], block);
+	rec = xfs_btree_rec_addr(cur, cur->bc_levels[0].ptr, block);
 
 	trace_xchk_btree_rec(bs->sc, cur, 0);
 
@@ -153,7 +153,7 @@ xchk_btree_rec(
 	/* Is this at least as large as the parent low key? */
 	cur->bc_ops->init_key_from_rec(&key, rec);
 	keyblock = xfs_btree_get_block(cur, 1, &bp);
-	keyp = xfs_btree_key_addr(cur, cur->bc_ptrs[1], keyblock);
+	keyp = xfs_btree_key_addr(cur, cur->bc_levels[1].ptr, keyblock);
 	if (cur->bc_ops->diff_two_keys(cur, &key, keyp) < 0)
 		xchk_btree_set_corrupt(bs->sc, cur, 1);
 
@@ -162,7 +162,7 @@ xchk_btree_rec(
 
 	/* Is this no larger than the parent high key? */
 	cur->bc_ops->init_high_key_from_rec(&hkey, rec);
-	keyp = xfs_btree_high_key_addr(cur, cur->bc_ptrs[1], keyblock);
+	keyp = xfs_btree_high_key_addr(cur, cur->bc_levels[1].ptr, keyblock);
 	if (cur->bc_ops->diff_two_keys(cur, keyp, &hkey) < 0)
 		xchk_btree_set_corrupt(bs->sc, cur, 1);
 }
@@ -184,7 +184,7 @@ xchk_btree_key(
 	struct xfs_buf		*bp;
 
 	block = xfs_btree_get_block(cur, level, &bp);
-	key = xfs_btree_key_addr(cur, cur->bc_ptrs[level], block);
+	key = xfs_btree_key_addr(cur, cur->bc_levels[level].ptr, block);
 
 	trace_xchk_btree_key(bs->sc, cur, level);
 
@@ -200,7 +200,7 @@ xchk_btree_key(
 
 	/* Is this at least as large as the parent low key? */
 	keyblock = xfs_btree_get_block(cur, level + 1, &bp);
-	keyp = xfs_btree_key_addr(cur, cur->bc_ptrs[level + 1], keyblock);
+	keyp = xfs_btree_key_addr(cur, cur->bc_levels[level + 1].ptr, keyblock);
 	if (cur->bc_ops->diff_two_keys(cur, key, keyp) < 0)
 		xchk_btree_set_corrupt(bs->sc, cur, level);
 
@@ -208,8 +208,8 @@ xchk_btree_key(
 		return;
 
 	/* Is this no larger than the parent high key? */
-	key = xfs_btree_high_key_addr(cur, cur->bc_ptrs[level], block);
-	keyp = xfs_btree_high_key_addr(cur, cur->bc_ptrs[level + 1], keyblock);
+	key = xfs_btree_high_key_addr(cur, cur->bc_levels[level].ptr, block);
+	keyp = xfs_btree_high_key_addr(cur, cur->bc_levels[level + 1].ptr, keyblock);
 	if (cur->bc_ops->diff_two_keys(cur, keyp, key) < 0)
 		xchk_btree_set_corrupt(bs->sc, cur, level);
 }
@@ -292,7 +292,7 @@ xchk_btree_block_check_sibling(
 
 	/* Compare upper level pointer to sibling pointer. */
 	pblock = xfs_btree_get_block(ncur, level + 1, &pbp);
-	pp = xfs_btree_ptr_addr(ncur, ncur->bc_ptrs[level + 1], pblock);
+	pp = xfs_btree_ptr_addr(ncur, ncur->bc_levels[level + 1].ptr, pblock);
 	if (!xchk_btree_ptr_ok(bs, level + 1, pp))
 		goto out;
 	if (pbp)
@@ -540,7 +540,7 @@ xchk_btree_block_check_keys(
 
 	/* Make sure the low key of this block matches the parent. */
 	parent_block = xfs_btree_get_block(cur, level + 1, &bp);
-	parent_low_key = xfs_btree_key_addr(cur, cur->bc_ptrs[level + 1],
+	parent_low_key = xfs_btree_key_addr(cur, cur->bc_levels[level + 1].ptr,
 			parent_block);
 	if (cur->bc_ops->diff_two_keys(cur, &block_key, parent_low_key)) {
 		xchk_btree_set_corrupt(bs->sc, bs->cur, level);
@@ -551,8 +551,8 @@ xchk_btree_block_check_keys(
 		return;
 
 	/* Make sure the high key of this block matches the parent. */
-	parent_high_key = xfs_btree_high_key_addr(cur, cur->bc_ptrs[level + 1],
-			parent_block);
+	parent_high_key = xfs_btree_high_key_addr(cur,
+			cur->bc_levels[level + 1].ptr, parent_block);
 	block_high_key = xfs_btree_high_key_from_key(cur, &block_key);
 	if (cur->bc_ops->diff_two_keys(cur, block_high_key, parent_high_key))
 		xchk_btree_set_corrupt(bs->sc, bs->cur, level);
@@ -643,7 +643,7 @@ xchk_btree_block_keys(
 
 	/* Obtain the parent's copy of the keys for this block. */
 	parent_block = xfs_btree_get_block(cur, level + 1, &bp);
-	parent_keys = xfs_btree_key_addr(cur, cur->bc_ptrs[level + 1],
+	parent_keys = xfs_btree_key_addr(cur, cur->bc_levels[level + 1].ptr,
 			parent_block);
 
 	if (cur->bc_ops->diff_two_keys(cur, &block_keys, parent_keys) != 0)
@@ -654,7 +654,7 @@ xchk_btree_block_keys(
 
 	/* Get high keys */
 	high_bk = xfs_btree_high_key_from_key(cur, &block_keys);
-	high_pk = xfs_btree_high_key_addr(cur, cur->bc_ptrs[level + 1],
+	high_pk = xfs_btree_high_key_addr(cur, cur->bc_levels[level + 1].ptr,
 			parent_block);
 
 	if (cur->bc_ops->diff_two_keys(cur, high_bk, high_pk) != 0)
@@ -718,18 +718,18 @@ xchk_btree(
 	if (error || !block)
 		goto out;
 
-	cur->bc_ptrs[level] = 1;
+	cur->bc_levels[level].ptr = 1;
 
 	while (level < cur->bc_nlevels) {
 		block = xfs_btree_get_block(cur, level, &bp);
 
 		if (level == 0) {
 			/* End of leaf, pop back towards the root. */
-			if (cur->bc_ptrs[level] >
+			if (cur->bc_levels[level].ptr >
 			    be16_to_cpu(block->bb_numrecs)) {
 				xchk_btree_block_keys(bs, level, block);
 				if (level < cur->bc_nlevels - 1)
-					cur->bc_ptrs[level + 1]++;
+					cur->bc_levels[level + 1].ptr++;
 				level++;
 				continue;
 			}
@@ -738,7 +738,7 @@ xchk_btree(
 			xchk_btree_rec(bs);
 
 			/* Call out to the record checker. */
-			recp = xfs_btree_rec_addr(cur, cur->bc_ptrs[0], block);
+			recp = xfs_btree_rec_addr(cur, cur->bc_levels[0].ptr, block);
 			error = bs->scrub_rec(bs, recp);
 			if (error)
 				break;
@@ -746,15 +746,15 @@ xchk_btree(
 			    (sc->sm->sm_flags & XFS_SCRUB_OFLAG_CORRUPT))
 				break;
 
-			cur->bc_ptrs[level]++;
+			cur->bc_levels[level].ptr++;
 			continue;
 		}
 
 		/* End of node, pop back towards the root. */
-		if (cur->bc_ptrs[level] > be16_to_cpu(block->bb_numrecs)) {
+		if (cur->bc_levels[level].ptr > be16_to_cpu(block->bb_numrecs)) {
 			xchk_btree_block_keys(bs, level, block);
 			if (level < cur->bc_nlevels - 1)
-				cur->bc_ptrs[level + 1]++;
+				cur->bc_levels[level + 1].ptr++;
 			level++;
 			continue;
 		}
@@ -763,9 +763,9 @@ xchk_btree(
 		xchk_btree_key(bs, level);
 
 		/* Drill another level deeper. */
-		pp = xfs_btree_ptr_addr(cur, cur->bc_ptrs[level], block);
+		pp = xfs_btree_ptr_addr(cur, cur->bc_levels[level].ptr, block);
 		if (!xchk_btree_ptr_ok(bs, level, pp)) {
-			cur->bc_ptrs[level]++;
+			cur->bc_levels[level].ptr++;
 			continue;
 		}
 		level--;
@@ -773,7 +773,7 @@ xchk_btree(
 		if (error || !block)
 			goto out;
 
-		cur->bc_ptrs[level] = 1;
+		cur->bc_levels[level].ptr = 1;
 	}
 
 out:
