@@ -36,6 +36,13 @@ struct xfs_buf;
 #define _XBF_DQUOTS	 (1 << 17)/* dquot buffer */
 #define _XBF_LOGRECOVERY	 (1 << 18)/* log recovery buffer */
 
+/*
+ * The caller is scanning for incore buffers to mark stale after a repair.
+ * Don't complain if we find a non-stale buffer of the wrong length, that's
+ * exactly the point.
+ */
+#define XBF_SCAN_STALE	 (1 << 19)
+
 /* flags used only internally */
 #define _XBF_PAGES	 (1 << 20)/* backed by refcounted pages */
 #define _XBF_KMEM	 (1 << 21)/* backed by heap memory */
@@ -108,6 +115,8 @@ typedef struct xfs_buftarg {
 struct xfs_buf_map {
 	xfs_daddr_t		bm_bn;	/* block number for I/O */
 	int			bm_len;	/* size of I/O */
+	unsigned int		bm_flags;
+#define XBM_SCAN_STALE		(1 << 0) /* see XBF_SCAN_STALE */
 };
 
 #define DEFINE_SINGLE_BUF_MAP(map, blkno, numblk) \

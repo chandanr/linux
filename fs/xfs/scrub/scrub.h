@@ -210,4 +210,7 @@ struct xchk_fscounters {
 	unsigned long long	icount_max;
 };
 
+bool xchk_xattr_set_map(struct xfs_scrub *sc, unsigned long *map,
+		unsigned int start, unsigned int len);
+
 #endif	/* __XFS_SCRUB_SCRUB_H__ */

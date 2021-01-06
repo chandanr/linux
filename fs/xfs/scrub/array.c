@@ -663,3 +663,27 @@ xfbma_iter_get(
 	*idx = cur;
 	return 0;
 }
+
+/* How many bytes is this array consuming? */
+loff_t
+xfbma_bytes(
+	struct xfbma	*array)
+{
+	struct kstat	statbuf;
+	int		ret;
+
+	ret = xfile_statx(array->xfile, &statbuf);
+	if (ret)
+		return ret;
+
+	return statbuf.blocks * 512;
+}
+
+/* Empty the entire array. */
+void
+xfbma_truncate(
+	struct xfbma	*array)
+{
+	xfile_discard(array->xfile, 0, MAX_LFS_FILESIZE);
+	array->nr = 0;
+}

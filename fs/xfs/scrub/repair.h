@@ -24,6 +24,8 @@ static inline int xrep_notsupported(struct xfs_scrub *sc)
 
 enum xfs_blft;
 struct xbitmap;
+struct xfs_swapext_req;
+struct xfs_swapext_res;
 
 int xrep_attempt(struct xfs_scrub *sc);
 void xrep_failure(struct xfs_mount *mp);
@@ -46,6 +48,8 @@ typedef int (*xrep_setfile_getbuf_fn)(struct xfs_scrub *sc,
 int xrep_set_file_contents(struct xfs_scrub *sc,
 		const struct xfs_buf_ops *ops, enum xfs_blft type,
 		xfs_fileoff_t isize);
+int xrep_swapext_prep(struct xfs_scrub *sc, int whichfork,
+		struct xfs_swapext_req *req, struct xfs_swapext_res *res);
 
 int xrep_fix_freelist(struct xfs_scrub *sc, int alloc_flags);
 int xrep_reap_extents(struct xfs_scrub *sc, struct xbitmap *exlist,
@@ -71,6 +75,7 @@ int xrep_reset_perag_resv(struct xfs_scrub *sc);
 int xrep_bmap(struct xfs_scrub *sc, int whichfork, bool allow_unwritten);
 int xrep_metadata_inode_forks(struct xfs_scrub *sc);
 int xrep_rmapbt_setup(struct xfs_scrub *sc);
+int xrep_xattr_reset_fork(struct xfs_scrub *sc, struct xfs_inode *ip);
 
 void xrep_ag_btcur_init(struct xfs_scrub *sc, struct xchk_ag *sa);
 
@@ -111,6 +116,7 @@ int xrep_bmap_data(struct xfs_scrub *sc);
 int xrep_bmap_attr(struct xfs_scrub *sc);
 int xrep_symlink(struct xfs_scrub *sc);
 int xrep_fscounters(struct xfs_scrub *sc);
+int xrep_xattr(struct xfs_scrub *sc);
 
 #ifdef CONFIG_XFS_QUOTA
 int xrep_quota(struct xfs_scrub *sc);
@@ -183,6 +189,8 @@ void xrep_bload_estimate_slack(struct xfs_scrub *sc,
 		struct xfs_btree_bload *bload);
 int xrep_newbt_relog_efis(struct xrep_newbt *xnr);
 
+bool xrep_buf_verify_struct(struct xfs_buf *bp, const struct xfs_buf_ops *ops);
+
 #else
 
 static inline int
@@ -242,6 +250,7 @@ xrep_rmapbt_setup(
 #define xrep_quotacheck			xrep_notsupported
 #define xrep_fscounters			xrep_notsupported
 #define xrep_rtsummary			xrep_notsupported
+#define xrep_xattr			xrep_notsupported
 
 #endif /* CONFIG_XFS_ONLINE_REPAIR */
 

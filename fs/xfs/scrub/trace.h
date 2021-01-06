@@ -1434,6 +1434,91 @@ TRACE_EVENT(xrep_setup_tempfile,
 		  __entry->temp_inum)
 );
 
+TRACE_EVENT(xrep_xattr_recover_leafblock,
+	TP_PROTO(struct xfs_inode *ip, xfs_dablk_t dabno, uint16_t magic),
+	TP_ARGS(ip, dabno, magic),
+	TP_STRUCT__entry(
+		__field(dev_t, dev)
+		__field(xfs_ino_t, ino)
+		__field(xfs_dablk_t, dabno)
+		__field(uint16_t, magic)
+	),
+	TP_fast_assign(
+		__entry->dev = ip->i_mount->m_super->s_dev;
+		__entry->ino = ip->i_ino;
+		__entry->dabno = dabno;
+		__entry->magic = magic;
+	),
+	TP_printk("dev %d:%d ino 0x%llx dablk %u magic 0x%x",
+		  MAJOR(__entry->dev), MINOR(__entry->dev),
+		  __entry->ino,
+		  __entry->dabno,
+		  __entry->magic)
+);
+
+#define XFS_ATTR_NSP_STR \
+	{ XFS_ATTR_LOCAL,	"local" }, \
+	{ XFS_ATTR_ROOT,	"root" }, \
+	{ XFS_ATTR_SECURE,	"secure" }
+
+TRACE_EVENT(xrep_xattr_salvage_key,
+	TP_PROTO(struct xfs_inode *ip, unsigned int flags, char *name,
+		 unsigned int namelen, unsigned int valuelen),
+	TP_ARGS(ip, flags, name, namelen, valuelen),
+	TP_STRUCT__entry(
+		__field(dev_t, dev)
+		__field(xfs_ino_t, ino)
+		__field(unsigned int, flags)
+		__field(unsigned int, namelen)
+		__dynamic_array(char, name, namelen)
+		__field(unsigned int, valuelen)
+	),
+	TP_fast_assign(
+		__entry->dev = ip->i_mount->m_super->s_dev;
+		__entry->ino = ip->i_ino;
+		__entry->flags = flags;
+		__entry->namelen = namelen;
+		memcpy(__get_str(name), name, namelen);
+		__entry->valuelen = valuelen;
+	),
+	TP_printk("dev %d:%d ino 0x%llx flags %s name '%.*s' valuelen %u",
+		  MAJOR(__entry->dev), MINOR(__entry->dev),
+		  __entry->ino,
+		   __print_flags(__entry->flags, "|", XFS_ATTR_NSP_STR),
+		  __entry->namelen,
+		  __get_str(name),
+		  __entry->valuelen)
+);
+
+TRACE_EVENT(xrep_xattr_insert_rec,
+	TP_PROTO(struct xfs_inode *ip, unsigned int flags, char *name,
+		 unsigned int namelen, unsigned int valuelen),
+	TP_ARGS(ip, flags, name, namelen, valuelen),
+	TP_STRUCT__entry(
+		__field(dev_t, dev)
+		__field(xfs_ino_t, ino)
+		__field(unsigned int, flags)
+		__field(unsigned int, namelen)
+		__dynamic_array(char, name, namelen)
+		__field(unsigned int, valuelen)
+	),
+	TP_fast_assign(
+		__entry->dev = ip->i_mount->m_super->s_dev;
+		__entry->ino = ip->i_ino;
+		__entry->flags = flags;
+		__entry->namelen = namelen;
+		memcpy(__get_str(name), name, namelen);
+		__entry->valuelen = valuelen;
+	),
+	TP_printk("dev %d:%d ino 0x%llx flags %s name '%.*s' valuelen %u",
+		  MAJOR(__entry->dev), MINOR(__entry->dev),
+		  __entry->ino,
+		   __print_flags(__entry->flags, "|", XFS_ATTR_NSP_STR),
+		  __entry->namelen,
+		  __get_str(name),
+		  __entry->valuelen)
+);
+
 #endif /* IS_ENABLED(CONFIG_XFS_ONLINE_REPAIR) */
 
 #endif /* _TRACE_XFS_SCRUB_TRACE_H */
