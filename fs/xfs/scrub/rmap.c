@@ -98,7 +98,7 @@ xchk_rmapbt_rec(
 	bool			is_attr;
 	int			error;
 
-	error = xfs_rmap_btrec_to_irec(rec, &irec);
+	error = xfs_rmap_btrec_to_irec(bs->cur, rec, &irec);
 	if (!xchk_btree_process_error(bs->sc, bs->cur, 0, &error))
 		goto out;
 

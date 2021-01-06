@@ -261,6 +261,7 @@ out_bad_rec:
 		cur->bc_btnum == XFS_BTNUM_BNO ? "Block" : "Size", agno);
 	xfs_warn(mp,
 		"start block 0x%x block count 0x%x", *bno, *len);
+	xfs_btree_mark_sick(cur);
 	return -EFSCORRUPTED;
 }
 
