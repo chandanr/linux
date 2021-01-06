@@ -1447,3 +1447,46 @@ xrep_ino_dqattach(
 
 	return error;
 }
+
+/* Initialize all the btree cursors for an AG repair. */
+void
+xrep_ag_btcur_init(
+	struct xfs_scrub	*sc,
+	struct xchk_ag		*sa)
+{
+	struct xfs_mount	*mp = sc->mp;
+	xfs_agnumber_t		agno = sa->agno;
+
+	xchk_perag_get(sc->mp, sa);
+
+	/* Set up a bnobt cursor for cross-referencing. */
+	if (sc->sm->sm_type != XFS_SCRUB_TYPE_BNOBT &&
+	    sc->sm->sm_type != XFS_SCRUB_TYPE_CNTBT) {
+		sa->bno_cur = xfs_allocbt_init_cursor(mp, sc->tp, sa->agf_bp,
+				agno, XFS_BTNUM_BNO);
+		sa->cnt_cur = xfs_allocbt_init_cursor(mp, sc->tp, sa->agf_bp,
+				agno, XFS_BTNUM_CNT);
+	}
+
+	/* Set up a inobt cursor for cross-referencing. */
+	if (sc->sm->sm_type != XFS_SCRUB_TYPE_INOBT &&
+	    sc->sm->sm_type != XFS_SCRUB_TYPE_FINOBT) {
+		sa->ino_cur = xfs_inobt_init_cursor(mp, sc->tp, sa->agi_bp,
+				agno, XFS_BTNUM_INO);
+		if (xfs_sb_version_hasfinobt(&mp->m_sb))
+			sa->fino_cur = xfs_inobt_init_cursor(mp, sc->tp,
+					sa->agi_bp, agno, XFS_BTNUM_FINO);
+	}
+
+	/* Set up a rmapbt cursor for cross-referencing. */
+	if (sc->sm->sm_type != XFS_SCRUB_TYPE_RMAPBT &&
+	    xfs_sb_version_hasrmapbt(&mp->m_sb))
+		sa->rmap_cur = xfs_rmapbt_init_cursor(mp, sc->tp, sa->agf_bp,
+				agno);
+
+	/* Set up a refcountbt cursor for cross-referencing. */
+	if (sc->sm->sm_type != XFS_SCRUB_TYPE_REFCNTBT &&
+	    xfs_sb_version_hasreflink(&mp->m_sb))
+		sa->refc_cur = xfs_refcountbt_init_cursor(mp, sc->tp,
+				sa->agf_bp, agno);
+}

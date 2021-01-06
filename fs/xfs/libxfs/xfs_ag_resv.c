@@ -411,6 +411,8 @@ xfs_ag_resv_free_extent(
 		/* fall through */
 	case XFS_AG_RESV_NONE:
 		xfs_trans_mod_sb(tp, XFS_TRANS_SB_FDBLOCKS, (int64_t)len);
+		/* fall through */
+	case XFS_AG_RESV_IGNORE:
 		return;
 	}
 
