@@ -191,5 +191,6 @@ xfs_bmap_bmdr_space(struct xfs_btree_block *bb)
 	return xfs_bmdr_space_calc(be16_to_cpu(bb->bb_numrecs));
 }
 
+void xfs_bmbt_iroot_alloc(struct xfs_inode *ip, int whichfork);
 
 #endif	/* __XFS_BMAP_BTREE_H__ */
