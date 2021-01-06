@@ -5305,8 +5305,6 @@ xfs_btree_alloc_cursor(
 	struct xfs_btree_cur	*cur;
 	unsigned int		maxlevels = xfs_btree_maxlevels(mp, btnum);
 
-	ASSERT(maxlevels <= XFS_BTREE_MAXLEVELS);
-
 	cur = kmem_zalloc(xfs_btree_cur_sizeof(maxlevels), KM_NOFS);
 	cur->bc_tp = tp;
 	cur->bc_mp = mp;
