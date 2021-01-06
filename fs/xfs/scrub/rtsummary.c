@@ -20,6 +20,7 @@
 #include "scrub/common.h"
 #include "scrub/trace.h"
 #include "scrub/xfile.h"
+#include "scrub/repair.h"
 
 /*
  * Realtime Summary
@@ -37,7 +38,12 @@ xchk_setup_rtsummary(
 	struct xfs_scrub	*sc)
 {
 	struct xfs_mount	*mp = sc->mp;
+	unsigned long long	resblks = 0;
 	int			error;
+
+	error = xrep_setup_tempfile(sc, S_IFREG);
+	if (error)
+		return error;
 
 	/*
 	 * Create an xfile to construct a new rtsummary file.  The xfile allows
@@ -47,7 +53,21 @@ xchk_setup_rtsummary(
 	if (IS_ERR(sc->xfile))
 		return PTR_ERR(sc->xfile);
 
-	error = xchk_trans_alloc(sc, 0);
+	/*
+	 * If we're doing a repair, we reserve 2x the summary blocks: once for
+	 * the new summary contents and again for the bmbt blocks and the
+	 * remapping operation.  We cannot use xfs_swapext_estimate because we
+	 * have not yet constructed the replacement rtsummary and therefore do
+	 * not know how many extents it will use.  By the time we do, we will
+	 * have a dirty transaction (which we cannot drop because we cannot
+	 * drop the rtsummary ILOCK) and cannot ask for more reservation.
+	 */
+	if (sc->sm->sm_flags & XFS_SCRUB_IFLAG_REPAIR) {
+		resblks = XFS_B_TO_FSB(sc->mp, sc->mp->m_rsumsize) * 2;
+		if (resblks > UINT_MAX)
+			return -EOPNOTSUPP;
+	}
+	error = xchk_trans_alloc(sc, resblks);
 	if (error)
 		return error;
 
