@@ -297,6 +297,26 @@ xfs_xchg_range_rele_log_assist(
 	xlog_drop_incompat_feat(mp->m_log);
 }
 
+/* Decide if we can use the old data fork exchange code. */
+static inline bool
+xfs_xchg_use_forkswap(
+	const struct file_xchg_range	*fxr,
+	struct xfs_inode		*ip1,
+	struct xfs_inode		*ip2)
+{
+	return	(fxr->flags & FILE_XCHG_RANGE_NONATOMIC) &&
+		(fxr->flags & FILE_XCHG_RANGE_FULL_FILES) &&
+		!(fxr->flags & FILE_XCHG_RANGE_TO_EOF) &&
+		fxr->file1_offset == 0 && fxr->file2_offset == 0 &&
+		fxr->length == ip1->i_disk_size &&
+		fxr->length == ip2->i_disk_size;
+}
+
+enum xchg_strategy {
+	SWAPEXT		= 1,	/* xfs_swapext() */
+	FORKSWAP	= 2,	/* exchange forks */
+};
+
 /* Exchange the contents of two files. */
 int
 xfs_xchg_range(
@@ -317,19 +337,12 @@ xfs_xchg_range(
 	struct xfs_swapext_res		res;
 	struct xfs_trans		*tp;
 	unsigned int			qretry;
+	unsigned int			flags = 0;
 	bool				retried = false;
+	enum xchg_strategy		strategy;
 	int				error;
 
 	trace_xfs_xchg_range(ip1, fxr, ip2, xchg_flags);
-
-	/*
-	 * This function only supports using log intent items (SXI items if
-	 * atomic exchange is required, or BUI items if not) to exchange file
-	 * data.  The legacy whole-fork swap will be ported in a later patch.
-	 */
-	if (!xfs_sb_version_hasatomicswap(&mp->m_sb) &&
-	    !xfs_sb_version_canatomicswap(&mp->m_sb))
-		return -EOPNOTSUPP;
 
 	if (fxr->flags & FILE_XCHG_RANGE_TO_EOF)
 		req.flags |= XFS_SWAPEXT_SET_SIZES;
@@ -340,10 +353,25 @@ xfs_xchg_range(
 	if (error)
 		return error;
 
+	/*
+	 * We haven't decided which exchange strategy we want to use yet, but
+	 * here we must choose if we want freed blocks during the swap to be
+	 * added to the transaction block reservation (RES_FDBLKS) or freed
+	 * into the global fdblocks.  The legacy fork swap mechanism doesn't
+	 * free any blocks, so it doesn't require it.  It is also the only
+	 * option that works for older filesystems.
+	 *
+	 * The bmap log intent items that were added with rmap and reflink can
+	 * change the bmbt shape, so the intent-based swap strategies require
+	 * us to set RES_FDBLKS.
+	 */
+	if (xfs_sb_version_haslazysbcount(&mp->m_sb))
+		flags |= XFS_TRANS_RES_FDBLKS;
+
 retry:
 	/* Allocate the transaction, lock the inodes, and join them. */
 	error = xfs_trans_alloc(mp, &M_RES(mp)->tr_write, res.resblks, 0,
-			XFS_TRANS_RES_FDBLKS, &tp);
+			flags, &tp);
 	if (error)
 		return error;
 
@@ -386,6 +414,41 @@ retry:
 	if (error)
 		goto out_trans_cancel;
 
+	if (xfs_sb_version_hasatomicswap(&mp->m_sb) ||
+	    xfs_sb_version_canatomicswap(&mp->m_sb)) {
+		/*
+		 * xfs_swapext() uses deferred bmap log intent items to swap
+		 * extents between file forks.  If the atomic log swap feature
+		 * is enabled, it will also use swapext log intent items to
+		 * restart the operation in case of failure.
+		 *
+		 * This means that we can use it if we previously obtained
+		 * permission from the log to use log-assisted atomic extent
+		 * swapping; or if the fs supports rmap or reflink and the
+		 * user said NONATOMIC.
+		 */
+		strategy = SWAPEXT;
+	} else if (xfs_xchg_use_forkswap(fxr, ip1, ip2)) {
+		/*
+		 * Exchange the file contents by using the old bmap fork
+		 * exchange code, if we're a defrag tool doing a full file
+		 * swap.
+		 */
+		strategy = FORKSWAP;
+
+		error = xfs_swap_extents_check_format(ip2, ip1);
+		if (error) {
+			xfs_notice(mp,
+		"%s: inode 0x%llx format is incompatible for exchanging.",
+					__func__, ip2->i_ino);
+			goto out_trans_cancel;
+		}
+	} else {
+		/* We cannot exchange the file contents. */
+		error = -EOPNOTSUPP;
+		goto out_trans_cancel;
+	}
+
 	/* If we got this far on a dry run, all parameters are ok. */
 	if (fxr->flags & FILE_XCHG_RANGE_DRY_RUN)
 		goto out_trans_cancel;
@@ -398,8 +461,10 @@ retry:
 		xfs_trans_ichgtime(tp, ip2,
 				XFS_ICHGTIME_MOD | XFS_ICHGTIME_CHG);
 
-	/* Exchange the file contents by swapping the block mappings. */
-	error = xfs_swapext(&tp, &req);
+	if (strategy == SWAPEXT)
+		error = xfs_swapext(&tp, &req);
+	else
+		error = xfs_swap_extent_forks(&tp, &req);
 	if (error)
 		goto out_trans_cancel;
 
