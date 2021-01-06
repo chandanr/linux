@@ -862,6 +862,23 @@ xfs_qm_qino_alloc(
 	if (error)
 		return error;
 
+	/*
+	 * Ensure the quota directory exists, being careful to disable quotas
+	 * while we do this.  We'll have to quotacheck anyway, so the temporary
+	 * undercount of the directory tree shouldn't affect the quota count.
+	 */
+	if (xfs_sb_version_hasmetadir(&mp->m_sb)) {
+		unsigned int	old_qflags;
+
+		old_qflags = mp->m_qflags & XFS_ALL_QUOTA_ACCT;
+		mp->m_qflags &= ~XFS_ALL_QUOTA_ACCT;
+		error = xfs_imeta_ensure_dirpath(mp,
+				xfs_qflags_to_imeta(flags));
+		mp->m_qflags |= old_qflags;
+		if (error)
+			return error;
+	}
+
 	error = xfs_trans_alloc(mp, &M_RES(mp)->tr_imeta_create,
 			need_alloc ? xfs_imeta_create_space_res(mp) : 0,
 			0, 0, &tp);

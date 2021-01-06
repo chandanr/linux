@@ -38,6 +38,7 @@
 #include "xfs_reflink.h"
 #include "xfs_health.h"
 #include "xfs_health.h"
+#include "xfs_imeta.h"
 
 kmem_zone_t *xfs_inode_zone;
 
@@ -883,6 +884,105 @@ xfs_create_tmpfile(
 	xfs_qm_dqrele(pdqp);
 
 	return error;
+}
+
+/* Create a metadata for the last component of the path. */
+STATIC int
+xfs_imeta_mkdir(
+	struct xfs_mount		*mp,
+	const struct xfs_imeta_path	*path)
+{
+	struct xfs_imeta_end		ic = { NULL };
+	struct xfs_inode		*ip = NULL;
+	struct xfs_trans		*tp = NULL;
+	struct xfs_dquot		*udqp = NULL;
+	struct xfs_dquot		*gdqp = NULL;
+	struct xfs_dquot		*pdqp = NULL;
+	unsigned int			resblks;
+	int				error;
+
+	if (XFS_FORCED_SHUTDOWN(mp))
+		return -EIO;
+
+	/* Grab all the root dquots. */
+	error = xfs_qm_vop_dqalloc(mp->m_metadirip, GLOBAL_ROOT_UID,
+			GLOBAL_ROOT_GID, 0, XFS_QMOPT_QUOTALL, &udqp, &gdqp,
+			&pdqp);
+	if (error)
+		return error;
+
+	/* Allocate a transaction to create the last directory. */
+	resblks = xfs_imeta_create_space_res(mp);
+	error = xfs_trans_alloc_icreate(mp, &M_RES(mp)->tr_imeta_create, udqp,
+			gdqp, pdqp, resblks, &tp);
+	if (error)
+		goto out_dqrele;
+
+	/* Create the subdirectory. */
+	error = xfs_imeta_create(&tp, path, S_IFDIR, 0, &ip, &ic);
+	if (error)
+		goto out_trans_cancel;
+
+	/*
+	 * Attach the dquot(s) to the inodes and modify them incore.
+	 * These ids of the inode couldn't have changed since the new
+	 * inode has been locked ever since it was created.
+	 */
+	xfs_qm_vop_create_dqattach(tp, ip, udqp, gdqp, pdqp);
+
+	error = xfs_trans_commit(tp);
+	xfs_imeta_end_update(mp, &ic, error);
+
+	/*
+	 * We don't pass the directory we just created to the caller, so finish
+	 * setting up the inode, then release the dir and the dquots.
+	 */
+	goto out_irele;
+
+out_trans_cancel:
+	xfs_trans_cancel(tp);
+	xfs_imeta_end_update(mp, &ic, error);
+out_irele:
+	/* Have to finish setting up the inode to ensure it's deleted. */
+	if (ip) {
+		xfs_finish_inode_setup(ip);
+		xfs_irele(ip);
+	}
+
+out_dqrele:
+	xfs_qm_dqrele(udqp);
+	xfs_qm_dqrele(gdqp);
+	xfs_qm_dqrele(pdqp);
+	return error;
+}
+
+/*
+ * Make sure that every metadata directory path component exists and is a
+ * directory.
+ */
+int
+xfs_imeta_ensure_dirpath(
+	struct xfs_mount		*mp,
+	const struct xfs_imeta_path	*path)
+{
+	struct xfs_imeta_path		temp_path = {
+		.im_path		= path->im_path,
+		.im_depth		= 1,
+		.im_ftype		= XFS_DIR3_FT_DIR,
+	};
+	unsigned int			i;
+	int				error = 0;
+
+	if (!xfs_sb_version_hasmetadir(&mp->m_sb))
+		return 0;
+
+	for (i = 0; i < path->im_depth - 1; i++, temp_path.im_depth++) {
+		error = xfs_imeta_mkdir(mp, &temp_path);
+		if (error && error != -EEXIST)
+			break;
+	}
+
+	return error == -EEXIST ? 0 : error;
 }
 
 int
