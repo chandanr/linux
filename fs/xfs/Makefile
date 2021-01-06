@@ -176,6 +176,7 @@ xfs-y				+= $(addprefix scrub/, \
 				   alloc_repair.o \
 				   bitmap.o \
 				   bmap_repair.o \
+				   fscounters_repair.o \
 				   ialloc_repair.o \
 				   inode_repair.o \
 				   refcount_repair.o \
