@@ -257,5 +257,9 @@ int xfs_dir_link_existing_child(struct xfs_trans *tp, uint resblks,
 int xfs_dir_remove_child(struct xfs_trans *tp, uint resblks,
 		struct xfs_inode *dp, struct xfs_name *name,
 		struct xfs_inode *ip);
+int xfs_dir_exchange(struct xfs_trans *tp, struct xfs_inode *dp1,
+		struct xfs_name *name1, struct xfs_inode *ip1,
+		struct xfs_inode *dp2, struct xfs_name *name2,
+		struct xfs_inode *ip2, unsigned int spaceres);
 
 #endif	/* __XFS_DIR2_H__ */
