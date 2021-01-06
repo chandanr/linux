@@ -149,6 +149,8 @@ int xchk_metadata_inode_forks(struct xfs_scrub *sc);
 int xchk_ilock_inverted(struct xfs_inode *ip, uint lock_mode);
 void xchk_stop_reaping(struct xfs_scrub *sc);
 void xchk_start_reaping(struct xfs_scrub *sc);
+int xchk_fs_freeze(struct xfs_scrub *sc);
+int xchk_fs_thaw(struct xfs_scrub *sc);
 
 /* Do we need to invoke the repair tool? */
 static inline bool xfs_scrub_needs_repair(struct xfs_scrub_metadata *sm)

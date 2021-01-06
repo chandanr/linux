@@ -616,9 +616,13 @@ xchk_trans_alloc(
 	struct xfs_scrub	*sc,
 	uint			resblks)
 {
+	uint			flags = 0;
+
+	if (sc->flags & XCHK_FS_FROZEN)
+		flags |= XFS_TRANS_NO_WRITECOUNT;
 	if (sc->sm->sm_flags & XFS_SCRUB_IFLAG_REPAIR)
 		return xfs_trans_alloc(sc->mp, &M_RES(sc->mp)->tr_itruncate,
-				resblks, 0, 0, &sc->tp);
+				resblks, 0, flags, &sc->tp);
 
 	return xfs_trans_alloc_empty(sc->mp, &sc->tp);
 }
@@ -955,4 +959,91 @@ xchk_start_reaping(
 		xfs_blockgc_start(sc->mp);
 	}
 	sc->flags &= ~XCHK_REAPING_DISABLED;
+}
+
+/*
+ * Exclusive Filesystem Access During Scrub and Repair
+ * ===================================================
+ *
+ * While most scrub activity can occur while the filesystem is live, there
+ * are certain scenarios where we cannot tolerate concurrent metadata updates.
+ * We therefore must freeze the filesystem against all other changes.
+ *
+ * The typical scenarios envisioned for scrub freezes are (a) to lock out all
+ * other filesystem changes in order to check the global summary counters,
+ * and anything else that requires unusual behavioral semantics.
+ *
+ * The typical scenarios envisioned for repair freezes are (a) to avoid ABBA
+ * deadlocks when need to take locks in an unusual order; or (b) to update
+ * global filesystem state.  For example, reconstruction of a damaged reverse
+ * mapping btree requires us to hold the AG header locks while scanning
+ * inodes, which goes against the usual inode -> AG header locking order.
+ *
+ * A note about inode reclaim: when we freeze the filesystem, users can't
+ * modify things and periodic background reclaim of speculative preallocations
+ * and copy-on-write staging extents is stopped.  However, the scrub/repair
+ * thread must be careful about evicting an inode from memory -- if the
+ * eviction would require a transaction, we must defer the iput until after
+ * the scrub freeze.  The reasons for this are twofold: first, scrub/repair
+ * already have a transaction and xfs can't nest transactions; and second, we
+ * froze the fs to prevent modifications that we can't control directly.
+ * This guarantee is made by freezing the inode inactivation worker while
+ * frozen.
+ *
+ * Userspace is prevented from freezing or thawing the filesystem during a
+ * repair freeze by the ->freeze_super and ->thaw_super superblock operations,
+ * which block any changes to the freeze state while a repair freeze is
+ * running through the use of the m_scrub_freeze mutex.  It only makes sense
+ * to run one scrub/repair freeze at a time, so the mutex is fine.
+ *
+ * Scrub/repair freezes cannot be initiated during a regular freeze because
+ * freeze_super does not allow nested freeze.  Repair activity that does not
+ * require a repair freeze is also prevented from running during a regular
+ * freeze because transaction allocation blocks on the regular freeze.  We
+ * assume that the only other users of XFS_TRANS_NO_WRITECOUNT transactions
+ * either aren't modifying space metadata in a way that would affect repair,
+ * or that we can inhibit any of the ones that do.
+ *
+ * Note that thaw_super and freeze_super can call deactivate_locked_super
+ * which can free the xfs_mount.  This can happen if someone freezes the block
+ * device, unmounts the filesystem, and thaws the block device.  Therefore, we
+ * must be careful about who gets to unlock the repair freeze mutex.  See the
+ * comments in xfs_fs_put_super.
+ */
+
+/* Start a scrub/repair freeze. */
+int
+xchk_fs_freeze(
+	struct xfs_scrub	*sc)
+{
+	int			error;
+
+	if (!(sc->sm->sm_flags & XFS_SCRUB_IFLAG_FREEZE_OK))
+		return -EUSERS;
+
+	if (sc->sm->sm_flags & XFS_SCRUB_IFLAG_REPAIR)
+		mnt_drop_write_file(sc->file);
+
+	mutex_lock(&sc->mp->m_scrub_freeze);
+	error = freeze_super(sc->mp->m_super);
+	if (error) {
+		mutex_unlock(&sc->mp->m_scrub_freeze);
+		sc->sm->sm_flags &= ~XFS_SCRUB_IFLAG_REPAIR;
+		return error;
+	}
+	sc->flags |= XCHK_FS_FROZEN;
+	return 0;
+}
+
+/* Release a scrub/repair freeze. */
+int
+xchk_fs_thaw(
+	struct xfs_scrub	*sc)
+{
+	int			error;
+
+	sc->flags &= ~XCHK_FS_FROZEN;
+	error = thaw_super(sc->mp->m_super);
+	mutex_unlock(&sc->mp->m_scrub_freeze);
+	return error;
 }

@@ -324,9 +324,12 @@ retry:
 
 	/*
 	 * Zero-reservation ("empty") transactions can't modify anything, so
-	 * they're allowed to run while we're frozen.
+	 * they're allowed to run while we're frozen.  Scrub is allowed to
+	 * freeze the filesystem in order to obtain exclusive access to the
+	 * filesystem.
 	 */
 	WARN_ON(resp->tr_logres > 0 &&
+	        !mutex_is_locked(&mp->m_scrub_freeze) &&
 		mp->m_super->s_writers.frozen == SB_FREEZE_COMPLETE);
 	ASSERT(!(flags & XFS_TRANS_RES_FDBLKS) ||
 	       xfs_sb_version_haslazysbcount(&mp->m_sb));
