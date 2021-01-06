@@ -6316,6 +6316,8 @@ xfs_bmap_finish_one(
 
 	switch (type) {
 	case XFS_BMAP_MAP:
+		if (state == XFS_EXT_UNWRITTEN)
+			flags |= XFS_BMAPI_PREALLOC;
 		error = xfs_bmapi_remap(tp, ip, startoff, *blockcount,
 				startblock, flags);
 		*blockcount = 0;
