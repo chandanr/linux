@@ -157,6 +157,13 @@ xfs_bmap_broot_space_calc(
 	struct xfs_mount	*mp,
 	unsigned int		nrecs)
 {
+	/*
+	 * If the bmbt root block is empty, we should be converting the fork
+	 * to extents format.  Hence, the size is zero.
+	 */
+	if (nrecs == 0)
+		return 0;
+
 	return xfs_bmbt_block_len(mp) + \
 	       (nrecs * (sizeof(struct xfs_bmbt_key) + sizeof(xfs_bmbt_ptr_t)));
 }
