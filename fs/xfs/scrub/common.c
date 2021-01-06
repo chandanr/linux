@@ -761,7 +761,13 @@ xchk_get_inode(
 				error, __return_address);
 		return error;
 	}
-	if (VFS_I(ip)->i_generation != sc->sm->sm_gen) {
+
+	/*
+	 * Scrubbing by handle requires the exact ino/gen pair, and is not
+	 * allowed for non-directory metadata files.
+	 */
+	if (VFS_I(ip)->i_generation != sc->sm->sm_gen ||
+	    (xfs_is_metadata_inode(ip) && !S_ISDIR(VFS_I(ip)->i_mode))) {
 		xfs_irele(ip);
 		return -ENOENT;
 	}

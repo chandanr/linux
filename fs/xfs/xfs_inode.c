@@ -575,8 +575,19 @@ xfs_lookup(
 	if (error)
 		goto out_free_name;
 
+	/*
+	 * Make sure that a corrupt directory cannot accidentally link to a
+	 * metadata file.
+	 */
+	if (XFS_IS_CORRUPT(dp->i_mount, xfs_is_metadata_inode(*ipp))) {
+		error = -EFSCORRUPTED;
+		goto out_irele;
+	}
+
 	return 0;
 
+out_irele:
+	xfs_irele(*ipp);
 out_free_name:
 	if (ci_name)
 		kmem_free(ci_name->name);
@@ -2619,6 +2630,9 @@ void
 xfs_imeta_irele(
 	struct xfs_inode	*ip)
 {
+	ASSERT(!xfs_sb_version_hasmetadir(&ip->i_mount->m_sb) ||
+	       xfs_is_metadata_inode(ip));
+
 	xfs_irele(ip);
 }
 

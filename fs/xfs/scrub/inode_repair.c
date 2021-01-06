@@ -351,6 +351,14 @@ xrep_dinode_flags(
 		flags2 &= ~XFS_DIFLAG2_DAX;
 	if (!xfs_sb_version_hasbigtime(&mp->m_sb))
 		flags2 &= ~XFS_DIFLAG2_BIGTIME;
+	if (flags2 & XFS_DIFLAG2_METADATA) {
+		xfs_failaddr_t	fa;
+
+		fa = xfs_dinode_verify_metaflag(sc->mp, dip, mode, flags,
+				flags2);
+		if (fa)
+			flags2 &= ~XFS_DIFLAG2_METADATA;
+	}
 	dip->di_flags = cpu_to_be16(flags);
 	dip->di_flags2 = cpu_to_be64(flags2);
 }

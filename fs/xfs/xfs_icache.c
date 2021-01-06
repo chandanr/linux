@@ -1345,6 +1345,8 @@ xfs_imeta_iget(
 		goto bad_rele;
 	if (xfs_mode_to_ftype(VFS_I(ip)->i_mode) != ftype)
 		goto bad_rele;
+	if (xfs_sb_version_hasmetadir(&mp->m_sb) && !xfs_is_metadata_inode(ip))
+		goto bad_rele;
 
 	*ipp = ip;
 	return 0;

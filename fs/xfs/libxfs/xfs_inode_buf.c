@@ -402,6 +402,69 @@ xfs_dinode_verify_forkoff(
 	return NULL;
 }
 
+/*
+ * Validate all the picky requirements we have for a file that claims to be
+ * filesystem metadata.
+ */
+xfs_failaddr_t
+xfs_dinode_verify_metaflag(
+	struct xfs_mount	*mp,
+	struct xfs_dinode	*dip,
+	uint16_t		mode,
+	uint16_t		flags,
+	uint64_t		flags2)
+{
+	if (!xfs_sb_version_hasmetadir(&mp->m_sb))
+		return __this_address;
+
+	/* V5 filesystem only */
+	if (dip->di_version < 3)
+		return __this_address;
+
+	/* V3 inode fields that are always zero */
+	if (dip->di_flushiter || dip->di_onlink)
+		return __this_address;
+
+	/* Metadata files can only be directories or regular files */
+	if (!S_ISDIR(mode) && !S_ISREG(mode))
+		return __this_address;
+
+	/* They must have zero access permissions */
+	if (mode & 0777)
+		return __this_address;
+
+	/* DMAPI event and state masks are zero */
+	if (dip->di_dmevmask || dip->di_dmstate)
+		return __this_address;
+
+	/* User, group, and project IDs must be zero */
+	if (dip->di_uid || dip->di_gid ||
+	    dip->di_projid_lo || dip->di_projid_hi)
+		return __this_address;
+
+	/* Immutable, sync, noatime, nodump, and nodefrag flags must be set */
+	if (!(flags & XFS_DIFLAG_IMMUTABLE))
+		return __this_address;
+	if (!(flags & XFS_DIFLAG_SYNC))
+		return __this_address;
+	if (!(flags & XFS_DIFLAG_NOATIME))
+		return __this_address;
+	if (!(flags & XFS_DIFLAG_NODUMP))
+		return __this_address;
+	if (!(flags & XFS_DIFLAG_NODEFRAG))
+		return __this_address;
+
+	/* Directories must have nosymlinks flags set */
+	if (S_ISDIR(mode) && !(flags & XFS_DIFLAG_NOSYMLINKS))
+		return __this_address;
+
+	/* dax flags2 must not be set */
+	if (flags2 & XFS_DIFLAG2_DAX)
+		return __this_address;
+
+	return NULL;
+}
+
 xfs_failaddr_t
 xfs_dinode_verify(
 	struct xfs_mount	*mp,
@@ -542,6 +605,12 @@ xfs_dinode_verify(
 	if (xfs_dinode_has_bigtime(dip) &&
 	    !xfs_sb_version_hasbigtime(&mp->m_sb))
 		return __this_address;
+
+	if (flags2 & XFS_DIFLAG2_METADATA) {
+		fa = xfs_dinode_verify_metaflag(mp, dip, mode, flags, flags2);
+		if (fa)
+			return fa;
+	}
 
 	return NULL;
 }
