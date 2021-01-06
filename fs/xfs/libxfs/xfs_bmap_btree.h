@@ -156,8 +156,11 @@ xfs_bmap_broot_ptr_addr(
 static inline size_t
 xfs_bmap_broot_space_calc(
 	struct xfs_mount	*mp,
+	unsigned int		level,
 	unsigned int		nrecs)
 {
+	ASSERT(level > 0);
+
 	/*
 	 * If the bmbt root block is empty, we should be converting the fork
 	 * to extents format.  Hence, the size is zero.
@@ -178,7 +181,7 @@ xfs_bmap_broot_space(
 	struct xfs_mount	*mp,
 	struct xfs_bmdr_block	*bb)
 {
-	return xfs_bmap_broot_space_calc(mp, be16_to_cpu(bb->bb_numrecs));
+	return xfs_bmap_broot_space_calc(mp, 1, be16_to_cpu(bb->bb_numrecs));
 }
 
 /* Compute the space required for the ondisk root block. */
