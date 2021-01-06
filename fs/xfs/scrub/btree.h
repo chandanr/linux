@@ -29,6 +29,11 @@ typedef int (*xchk_btree_rec_fn)(
 	struct xchk_btree	*bs,
 	union xfs_btree_rec	*rec);
 
+struct xchk_btree_levels {
+	union xfs_btree_key		lastkey;
+	bool				has_lastkey;
+};
+
 struct xchk_btree {
 	/* caller-provided scrub state */
 	struct xfs_scrub		*sc;
@@ -39,11 +44,16 @@ struct xchk_btree {
 
 	/* internal scrub state */
 	union xfs_btree_rec		lastrec;
-	bool				firstrec;
-	union xfs_btree_key		lastkey[XFS_BTREE_MAXLEVELS];
-	bool				firstkey[XFS_BTREE_MAXLEVELS];
 	struct list_head		to_check;
+	struct xchk_btree_levels	levels[];
 };
+
+static inline size_t
+xchk_btree_sizeof(unsigned int levels)
+{
+	return sizeof(struct xchk_btree) +
+				(levels * sizeof(struct xchk_btree_levels));
+}
 
 int xchk_btree(struct xfs_scrub *sc, struct xfs_btree_cur *cur,
 		xchk_btree_rec_fn scrub_fn, const struct xfs_owner_info *oinfo,
