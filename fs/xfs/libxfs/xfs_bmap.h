@@ -294,4 +294,12 @@ int	xfs_bmapi_remap(struct xfs_trans *tp, struct xfs_inode *ip,
 int	xfs_bunmapi_range(struct xfs_trans **tpp, struct xfs_inode *ip,
 		int flags, xfs_fileoff_t startoff, xfs_fileoff_t endoff);
 
+typedef int (*xfs_bmap_query_range_fn)(
+	struct xfs_btree_cur	*cur,
+	struct xfs_bmbt_irec	*rec,
+	void			*priv);
+
+int xfs_bmap_query_all(struct xfs_btree_cur *cur, xfs_bmap_query_range_fn fn,
+		void *priv);
+
 #endif	/* __XFS_BMAP_H__ */
