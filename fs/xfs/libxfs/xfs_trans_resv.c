@@ -947,3 +947,15 @@ xfs_trans_resv_calc(
 	resp->tr_growrtzero.tr_logres = xfs_calc_growrtzero_reservation(mp);
 	resp->tr_growrtfree.tr_logres = xfs_calc_growrtfree_reservation(mp);
 }
+
+/*
+ * Compute an alternate set of log reservation sizes for use exclusively with
+ * minimum log size calculations.
+ */
+void
+xfs_trans_resv_calc_logsize(
+	struct xfs_mount	*mp,
+	struct xfs_trans_resv	*resp)
+{
+	xfs_trans_resv_calc(mp, resp);
+}
