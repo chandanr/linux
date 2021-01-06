@@ -44,6 +44,7 @@ struct xchk_btree {
 	bool				firstkey[XFS_BTREE_MAXLEVELS];
 	struct list_head		to_check;
 };
+
 int xchk_btree(struct xfs_scrub *sc, struct xfs_btree_cur *cur,
 		xchk_btree_rec_fn scrub_fn, const struct xfs_owner_info *oinfo,
 		void *private);
