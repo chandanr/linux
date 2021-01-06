@@ -569,5 +569,7 @@ void xfs_btree_copy_ptrs(struct xfs_btree_cur *cur,
 void xfs_btree_copy_keys(struct xfs_btree_cur *cur,
 		union xfs_btree_key *dst_key, union xfs_btree_key *src_key,
 		int numkeys);
+struct xfs_btree_cur *xfs_btree_alloc_cursor(struct xfs_mount *mp,
+		struct xfs_trans *tp, xfs_btnum_t btnum);
 
 #endif	/* __XFS_BTREE_H__ */
