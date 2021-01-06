@@ -736,22 +736,9 @@ xfs_create(
 	xfs_trans_ijoin(tp, dp, XFS_ILOCK_EXCL);
 	unlock_dp_on_error = false;
 
-	error = xfs_dir_createname(tp, dp, name, ip->i_ino,
-					resblks - XFS_IALLOC_SPACE_RES(mp));
-	if (error) {
-		ASSERT(error != -ENOSPC);
+	error = xfs_dir_create_new_child(tp, resblks, dp, name, ip);
+	if (error)
 		goto out_trans_cancel;
-	}
-	xfs_trans_ichgtime(tp, dp, XFS_ICHGTIME_MOD | XFS_ICHGTIME_CHG);
-	xfs_trans_log_inode(tp, dp, XFS_ILOG_CORE);
-
-	if (is_dir) {
-		error = xfs_dir_init(tp, ip, dp);
-		if (error)
-			goto out_trans_cancel;
-
-		xfs_bumplink(tp, dp);
-	}
 
 	/*
 	 * If this is a synchronous mount, make sure that the
