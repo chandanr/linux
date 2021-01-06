@@ -6214,17 +6214,8 @@ del_cursor:
 	return error;
 }
 
-/* Deferred mapping is only for real extents in the data fork. */
-static bool
-xfs_bmap_is_update_needed(
-	struct xfs_bmbt_irec	*bmap)
-{
-	return  bmap->br_startblock != HOLESTARTBLOCK &&
-		bmap->br_startblock != DELAYSTARTBLOCK;
-}
-
 /* Record a bmap intent. */
-static int
+static void
 __xfs_bmap_add(
 	struct xfs_trans		*tp,
 	enum xfs_bmap_intent_type	type,
@@ -6233,6 +6224,11 @@ __xfs_bmap_add(
 	struct xfs_bmbt_irec		*bmap)
 {
 	struct xfs_bmap_intent		*bi;
+
+	if ((whichfork != XFS_DATA_FORK && whichfork != XFS_ATTR_FORK) ||
+	    bmap->br_startblock == HOLESTARTBLOCK ||
+	    bmap->br_startblock == DELAYSTARTBLOCK)
+		return;
 
 	if (xfs_ifork_is_realtime(ip, whichfork))
 		trace_xfs_bmap_defer(tp->t_mountp, NULLAGNUMBER, type,
@@ -6257,7 +6253,6 @@ __xfs_bmap_add(
 	bi->bi_bmap = *bmap;
 
 	xfs_defer_add(tp, XFS_DEFER_OPS_TYPE_BMAP, &bi->bi_list);
-	return 0;
 }
 
 /* Map an extent into a file. */
@@ -6265,12 +6260,10 @@ void
 xfs_bmap_map_extent(
 	struct xfs_trans	*tp,
 	struct xfs_inode	*ip,
+	int			whichfork,
 	struct xfs_bmbt_irec	*PREV)
 {
-	if (!xfs_bmap_is_update_needed(PREV))
-		return;
-
-	__xfs_bmap_add(tp, XFS_BMAP_MAP, ip, XFS_DATA_FORK, PREV);
+	__xfs_bmap_add(tp, XFS_BMAP_MAP, ip, whichfork, PREV);
 }
 
 /* Unmap an extent out of a file. */
@@ -6278,12 +6271,10 @@ void
 xfs_bmap_unmap_extent(
 	struct xfs_trans	*tp,
 	struct xfs_inode	*ip,
+	int			whichfork,
 	struct xfs_bmbt_irec	*PREV)
 {
-	if (!xfs_bmap_is_update_needed(PREV))
-		return;
-
-	__xfs_bmap_add(tp, XFS_BMAP_UNMAP, ip, XFS_DATA_FORK, PREV);
+	__xfs_bmap_add(tp, XFS_BMAP_UNMAP, ip, whichfork, PREV);
 }
 
 /*
@@ -6302,6 +6293,10 @@ xfs_bmap_finish_one(
 	xfs_exntst_t			state)
 {
 	int				error = 0;
+	int				flags = 0;
+
+	if (whichfork == XFS_ATTR_FORK)
+		flags |= XFS_BMAPI_ATTRFORK;
 
 	ASSERT(tp->t_firstblock == NULLFSBLOCK);
 
@@ -6316,11 +6311,6 @@ xfs_bmap_finish_one(
 				ip->i_ino, whichfork, startoff, *blockcount,
 				state);
 
-	if (WARN_ON_ONCE(whichfork != XFS_DATA_FORK)) {
-		xfs_bmap_mark_sick(ip, whichfork);
-		return -EFSCORRUPTED;
-	}
-
 	if (XFS_TEST_ERROR(false, tp->t_mountp,
 			XFS_ERRTAG_BMAP_FINISH_ONE))
 		return -EIO;
@@ -6328,12 +6318,12 @@ xfs_bmap_finish_one(
 	switch (type) {
 	case XFS_BMAP_MAP:
 		error = xfs_bmapi_remap(tp, ip, startoff, *blockcount,
-				startblock, 0);
+				startblock, flags);
 		*blockcount = 0;
 		break;
 	case XFS_BMAP_UNMAP:
 		error = __xfs_bunmapi(tp, ip, startoff, blockcount,
-				XFS_BMAPI_REMAP, 1);
+				flags | XFS_BMAPI_REMAP, 1);
 		break;
 	default:
 		ASSERT(0);
