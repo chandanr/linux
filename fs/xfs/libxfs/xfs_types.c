@@ -47,6 +47,26 @@ xfs_verify_agbno(
 }
 
 /*
+ * Verify that an AG extent is fully contained inside the AG and does not point
+ * at static metadata.
+ */
+bool
+xfs_verify_agbext(
+	struct xfs_mount	*mp,
+	xfs_agnumber_t		agno,
+	xfs_agblock_t		agbno,
+	xfs_agblock_t		len)
+{
+	if (agbno + len <= agbno)
+		return false;
+
+	if (!xfs_verify_agbno(mp, agno, agbno))
+		return false;
+
+	return xfs_verify_agbno(mp, agno, agbno + len - 1);
+}
+
+/*
  * Verify that an FS block number pointer neither points outside the
  * filesystem nor points at static AG metadata.
  */
