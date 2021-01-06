@@ -47,7 +47,7 @@ xfs_make_iptr(struct xfs_mount *mp, struct xfs_buf *b, int o)
 int					/* error */
 xfs_dialloc_select_ag(
 	struct xfs_trans **tpp,		/* double pointer of transaction */
-	xfs_ino_t	parent,		/* parent inode (directory) */
+	struct xfs_inode *pip,		/* parent inode (directory) */
 	umode_t		mode,		/* mode bits for new inode */
 	struct xfs_buf	**IO_agbp);
 

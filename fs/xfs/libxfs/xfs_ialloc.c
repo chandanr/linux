@@ -940,20 +940,21 @@ xfs_ialloc_next_ag(
  */
 STATIC xfs_agnumber_t
 xfs_ialloc_ag_select(
-	xfs_trans_t	*tp,		/* transaction pointer */
-	xfs_ino_t	parent,		/* parent directory inode number */
-	umode_t		mode)		/* bits set to indicate file type */
+	struct xfs_trans	*tp,
+	struct xfs_inode	*pip,
+	umode_t			mode)
 {
-	xfs_agnumber_t	agcount;	/* number of ag's in the filesystem */
-	xfs_agnumber_t	agno;		/* current ag number */
-	int		flags;		/* alloc buffer locking flags */
-	xfs_extlen_t	ineed;		/* blocks needed for inode allocation */
-	xfs_extlen_t	longest = 0;	/* longest extent available */
-	xfs_mount_t	*mp;		/* mount point structure */
-	int		needspace;	/* file mode implies space allocated */
-	xfs_perag_t	*pag;		/* per allocation group data */
-	xfs_agnumber_t	pagno;		/* parent (starting) ag number */
-	int		error;
+	struct xfs_mount	*mp;
+	struct xfs_perag	*pag;
+	xfs_ino_t		parent = pip ? pip->i_ino : 0;
+	xfs_agnumber_t		agcount;
+	xfs_agnumber_t		agno;
+	xfs_agnumber_t		pagno;
+	xfs_extlen_t		ineed;
+	xfs_extlen_t		longest = 0;	/* longest extent available */
+	int			needspace;	/* file mode implies space allocated */
+	int			flags;
+	int			error;
 
 	/*
 	 * Files of these types need at least one block if length > 0
@@ -962,9 +963,21 @@ xfs_ialloc_ag_select(
 	needspace = S_ISDIR(mode) || S_ISREG(mode) || S_ISLNK(mode);
 	mp = tp->t_mountp;
 	agcount = mp->m_maxagi;
-	if (S_ISDIR(mode))
+	if (pip && xfs_is_metadata_inode(pip)) {
+		/*
+		 * Try to squash all the metadata inodes into the parent's
+		 * AG, or the one with the log if the log is internal, or
+		 * AG 0 if all else fails.
+		 */
+		if (xfs_verify_ino(mp, parent))
+			pagno = XFS_INO_TO_AGNO(mp, parent);
+		else if (mp->m_sb.sb_logstart != 0)
+			pagno = XFS_FSB_TO_AGNO(mp, mp->m_sb.sb_logstart);
+		else
+			pagno = 0;
+	} else if (S_ISDIR(mode)) {
 		pagno = xfs_ialloc_next_ag(mp);
-	else {
+	} else {
 		pagno = XFS_INO_TO_AGNO(mp, parent);
 		if (pagno >= agcount)
 			pagno = 0;
@@ -1768,7 +1781,7 @@ xfs_dialloc_roll(
 int
 xfs_dialloc_select_ag(
 	struct xfs_trans	**tpp,
-	xfs_ino_t		parent,
+	struct xfs_inode	*pip,
 	umode_t			mode,
 	struct xfs_buf		**IO_agbp)
 {
@@ -1788,7 +1801,7 @@ xfs_dialloc_select_ag(
 	 * We do not have an agbp, so select an initial allocation
 	 * group for inode allocation.
 	 */
-	start_agno = xfs_ialloc_ag_select(*tpp, parent, mode);
+	start_agno = xfs_ialloc_ag_select(*tpp, pip, mode);
 	if (start_agno == NULLAGNUMBER)
 		return 0;
 

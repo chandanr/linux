@@ -377,7 +377,7 @@ xfs_dir_ialloc(
 	 * Call the space management code to pick the on-disk inode to be
 	 * allocated.
 	 */
-	error = xfs_dialloc_select_ag(tpp, parent_ino, args->mode, &agibp);
+	error = xfs_dialloc_select_ag(tpp, dp, args->mode, &agibp);
 	if (error)
 		return error;
 
