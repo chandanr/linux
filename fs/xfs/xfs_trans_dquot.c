@@ -121,6 +121,31 @@ xfs_trans_dup_dqinfo(
 	}
 }
 
+/* Schedule a transactional dquot update on behalf of an inode. */
+#if IS_ENABLED(CONFIG_XFS_ONLINE_SCRUB)
+void
+xfs_trans_mod_ino_dquot(
+	struct xfs_trans	*tp,
+	struct xfs_inode	*ip,
+	struct xfs_dquot	*dqp,
+	uint			field,
+	int64_t			delta)
+{
+	struct xfs_trans_mod_dquot_params p;
+	struct xfs_quotainfo	*qi;
+
+	xfs_trans_mod_dquot(tp, dqp, field, delta);
+
+	p.tp = tp;
+	p.ip = ip;
+	p.dqp = dqp;
+	p.field = field;
+	p.delta = delta;
+	qi = tp->t_mountp->m_quotainfo;
+	xfs_hook_call(&qi->qi_mod_dquot_hooks, 0, &p);
+}
+#endif
+
 /*
  * Wrap around mod_dquot to account for both user and group quotas.
  */
@@ -139,11 +164,11 @@ xfs_trans_mod_dquot_byino(
 		return;
 
 	if (XFS_IS_UQUOTA_ON(mp) && ip->i_udquot)
-		(void) xfs_trans_mod_dquot(tp, ip->i_udquot, field, delta);
+		xfs_trans_mod_ino_dquot(tp, ip, ip->i_udquot, field, delta);
 	if (XFS_IS_GQUOTA_ON(mp) && ip->i_gdquot)
-		(void) xfs_trans_mod_dquot(tp, ip->i_gdquot, field, delta);
+		xfs_trans_mod_ino_dquot(tp, ip, ip->i_gdquot, field, delta);
 	if (XFS_IS_PQUOTA_ON(mp) && ip->i_pdquot)
-		(void) xfs_trans_mod_dquot(tp, ip->i_pdquot, field, delta);
+		xfs_trans_mod_ino_dquot(tp, ip, ip->i_pdquot, field, delta);
 }
 
 STATIC struct xfs_dqtrx *
@@ -323,6 +348,24 @@ xfs_apply_quota_reservation_deltas(
 	}
 }
 
+/* Call downstream hooks now that it's time to apply dquot deltas. */
+#if IS_ENABLED(CONFIG_XFS_ONLINE_SCRUB)
+static inline void
+xfs_trans_apply_dquot_deltas_hook(
+	struct xfs_trans	*tp,
+	struct xfs_dquot	*dqp)
+{
+	struct xfs_trans_apply_dquot_deltas_params p;
+	struct xfs_quotainfo	*qi = tp->t_mountp->m_quotainfo;
+
+	p.tp = tp;
+	p.dqp = dqp;
+	xfs_hook_call(&qi->qi_apply_dquot_deltas_hooks, 1, &p);
+}
+#else
+# define xfs_trans_apply_dquot_deltas_hook(tp, dqp)
+#endif
+
 /*
  * Called by xfs_trans_commit() and similar in spirit to
  * xfs_trans_apply_sb_deltas().
@@ -367,6 +410,8 @@ xfs_trans_apply_dquot_deltas(
 				break;
 
 			ASSERT(XFS_DQ_IS_LOCKED(dqp));
+
+			xfs_trans_apply_dquot_deltas_hook(tp, dqp);
 
 			/*
 			 * adjust the actual number of blocks used
@@ -467,6 +512,24 @@ xfs_trans_apply_dquot_deltas(
 	}
 }
 
+/* Call downstream hooks now that it's time to cancel dquot deltas. */
+#if IS_ENABLED(CONFIG_XFS_ONLINE_SCRUB)
+static inline void
+xfs_trans_unreserve_and_mod_dquots_hook(
+	struct xfs_trans	*tp,
+	struct xfs_dquot	*dqp)
+{
+	struct xfs_trans_apply_dquot_deltas_params p;
+	struct xfs_quotainfo	*qi = tp->t_mountp->m_quotainfo;
+
+	p.tp = tp;
+	p.dqp = dqp;
+	xfs_hook_call(&qi->qi_apply_dquot_deltas_hooks, 0, &p);
+}
+#else
+# define xfs_trans_unreserve_and_mod_dquots_hook(tp, dqp)
+#endif
+
 /*
  * Release the reservations, and adjust the dquots accordingly.
  * This is called only when the transaction is being aborted. If by
@@ -497,6 +560,9 @@ xfs_trans_unreserve_and_mod_dquots(
 			 */
 			if ((dqp = qtrx->qt_dquot) == NULL)
 				break;
+
+			xfs_trans_unreserve_and_mod_dquots_hook(tp, dqp);
+
 			/*
 			 * Unreserve the original reservation. We don't care
 			 * about the number of blocks used field, or deltas.

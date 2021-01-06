@@ -30,6 +30,22 @@ struct xqcheck {
 	struct xfbma		*ucounts;
 	struct xfbma		*gcounts;
 	struct xfbma		*pcounts;
+
+	/* Last inode scanned by live quotacheck. */
+	xfs_ino_t		last_ino;
+
+	/* Hooks into the quota code. */
+	struct notifier_block	mod_hook;
+	struct notifier_block	apply_hook;
+
+	/* Lock for the data used to capture live quota counter updates. */
+	struct mutex		lock;
+
+	/* Shadow quota delta tracking structure. */
+	struct rhashtable	shadow_dquot_acct;
+
+	/* Something failed during live tracking. */
+	bool			hook_dead;
 };
 
 /* Return the incore counter array for a given quota type. */

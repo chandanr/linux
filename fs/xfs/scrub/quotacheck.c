@@ -32,16 +32,62 @@
  * as the summation of the block usage counts for every file on the filesystem.
  * Therefore, we compute the correct icount, bcount, and rtbcount values by
  * creating a shadow quota counter structure and walking every inode.
+ *
+ * Because we are scanning a live filesystem, it's possible that another thread
+ * will try to update the quota counters for an inode that we've already
+ * scanned.  This will cause our counts to be incorrect.  Therefore, we hook
+ * the live transaction code in two places: (1) when the callers update the
+ * per-transaction dqtrx structure to log quota counter updates; and (2) when
+ * transaction commit actually logs those updates to the incore dquot.  By
+ * shadowing transaction updates in this manner, live quotacheck can ensure
+ * by locking the dquot and the shadow structure that its own copies are not
+ * out of date.
+ *
+ * Note that we use srcu notifier hooks to minimize the overhead when live
+ * quotacheck is /not/ running.
  */
+
+/* Track the quota deltas for a dquot in a transaction. */
+struct xqcheck_dqtrx {
+	struct xfs_dquot	*dqp;
+	int64_t			icount_delta;
+
+	int64_t			bcount_delta;
+	int64_t			delbcnt_delta;
+
+	int64_t			rtbcount_delta;
+	int64_t			delrtb_delta;
+};
+
+#define XQCHECK_MAX_NR_DQTRXS	(XFS_QM_TRANS_DQTYPES * XFS_QM_TRANS_MAXDQS)
+
+/*
+ * Track the quota deltas for all dquots attached to a transaction if the
+ * quota deltas are being applied to an inode that we already scanned.
+ */
+struct xqcheck_dqacct {
+	struct rhash_head	hash;
+	uintptr_t		tp;
+	struct xqcheck_dqtrx	dqtrx[XQCHECK_MAX_NR_DQTRXS];
+	unsigned int		refcount;
+};
+
+/* Free a shadow dquot accounting structure. */
+static void
+xqcheck_dqacct_free(
+	void			*ptr,
+	void			*arg)
+{
+	struct xqcheck_dqacct	*dqa = ptr;
+
+	kmem_free(dqa);
+}
 
 /* Set us up to scrub quota counters. */
 int
 xchk_setup_quotacheck(
 	struct xfs_scrub	*sc)
 {
-	/* Not ready for general consumption yet. */
-	return -EOPNOTSUPP;
-
 	if (!XFS_IS_QUOTA_RUNNING(sc->mp) || !XFS_IS_QUOTA_ON(sc->mp))
 		return -ENOENT;
 
@@ -81,7 +127,7 @@ xqcheck_get_shadow_dquot(
 	return error;
 }
 
-/* Update an incore dquot information. */
+/* Update an incore dquot information.  Caller must hold the xqc lock. */
 static int
 xqcheck_update_incore(
 	struct xqcheck		*xqc,
@@ -118,6 +164,210 @@ xqcheck_update_incore(
 	return error;
 }
 
+/* Decide if this is the shadow dquot accounting structure for a transaction. */
+static int
+xqcheck_dqacct_obj_cmpfn(
+	struct rhashtable_compare_arg	*arg,
+	const void			*obj)
+{
+	const uintptr_t			*key = arg->key;
+	const struct xqcheck_dqacct	*dqa = obj;
+
+	if (dqa->tp != *key)
+		return 1;
+	return 0;
+}
+
+static const struct rhashtable_params xqcheck_dqacct_hash_params = {
+	.min_size		= 32,
+	.key_len		= sizeof(uintptr_t),
+	.key_offset		= offsetof(struct xqcheck_dqacct, tp),
+	.head_offset		= offsetof(struct xqcheck_dqacct, hash),
+	.automatic_shrinking	= true,
+	.obj_cmpfn		= xqcheck_dqacct_obj_cmpfn,
+};
+
+/* Find a shadow dqtrx slot for the given dquot. */
+STATIC struct xqcheck_dqtrx *
+xqcheck_get_dqtrx(
+	struct xqcheck_dqacct	*dqa,
+	struct xfs_dquot	*dqp)
+{
+	int			i;
+
+	for (i = 0; i < XQCHECK_MAX_NR_DQTRXS; i++) {
+		if (dqa->dqtrx[i].dqp == NULL ||
+		    dqa->dqtrx[i].dqp == dqp)
+			return &dqa->dqtrx[i];
+	}
+
+	return NULL;
+}
+
+/*
+ * Create and fill out a quota delta tracking structure to shadow the updates
+ * going on in the regular quota code.
+ */
+static int
+xqcheck_mod_dquot(
+	struct notifier_block	*nb,
+	unsigned long		arg,
+	void			*data)
+{
+	struct xfs_trans_mod_dquot_params	*p = data;
+	struct xqcheck		*xqc;
+	struct xqcheck_dqacct	*dqa;
+	struct xqcheck_dqtrx	*dqtrx;
+	int			error;
+
+	xqc = container_of(nb, struct xqcheck, mod_hook);
+
+	/* Skip quota reservation fields. */
+	switch (p->field) {
+	case XFS_TRANS_DQ_BCOUNT:
+	case XFS_TRANS_DQ_DELBCOUNT:
+	case XFS_TRANS_DQ_ICOUNT:
+	case XFS_TRANS_DQ_RTBCOUNT:
+	case XFS_TRANS_DQ_DELRTBCOUNT:
+		break;
+	default:
+		return NOTIFY_DONE;
+	}
+
+	/* Skip inodes that haven't been scanned yet. */
+	mutex_lock(&xqc->lock);
+	if (xqc->last_ino < p->ip->i_ino || xqc->hook_dead)
+		goto out_unlock;
+
+	/* Make a shadow quota accounting tracker for this transaction. */
+	dqa = rhashtable_lookup_fast(&xqc->shadow_dquot_acct, &p->tp,
+			xqcheck_dqacct_hash_params);
+	if (!dqa) {
+		dqa = kmem_zalloc(sizeof(*dqa), KM_MAYFAIL | KM_NOFS);
+		if (!dqa)
+			goto fail;
+
+		dqa->tp = (uintptr_t)p->tp;
+		error = rhashtable_insert_fast(&xqc->shadow_dquot_acct,
+				&dqa->hash, xqcheck_dqacct_hash_params);
+		if (error)
+			goto fail;
+	}
+
+	/* Find the shadow dqtrx (or an empty slot) here. */
+	dqtrx = xqcheck_get_dqtrx(dqa, p->dqp);
+	if (!dqtrx)
+		goto fail;
+	if (dqtrx->dqp == NULL) {
+		dqtrx->dqp = p->dqp;
+		dqa->refcount++;
+	}
+
+	/* Update counter */
+	switch (p->field) {
+	case XFS_TRANS_DQ_BCOUNT:
+		dqtrx->bcount_delta += p->delta;
+		break;
+	case XFS_TRANS_DQ_DELBCOUNT:
+		dqtrx->delbcnt_delta += p->delta;
+		break;
+	case XFS_TRANS_DQ_ICOUNT:
+		dqtrx->icount_delta += p->delta;
+		break;
+	case XFS_TRANS_DQ_RTBCOUNT:
+		dqtrx->rtbcount_delta += p->delta;
+		break;
+	case XFS_TRANS_DQ_DELRTBCOUNT:
+		dqtrx->delrtb_delta += p->delta;
+		break;
+	}
+
+	goto out_unlock;
+fail:
+	xqc->hook_dead = true;
+out_unlock:
+	mutex_unlock(&xqc->lock);
+	return NOTIFY_DONE;
+}
+
+/*
+ * Apply the transaction quota deltas to our shadow quota accounting info when
+ * the regular quota code are doing the same.
+ */
+static int
+xqcheck_apply_deltas(
+	struct notifier_block	*nb,
+	unsigned long		arg,
+	void			*data)
+{
+	struct xfs_trans_apply_dquot_deltas_params	*p = data;
+	struct xqcheck		*xqc;
+	struct xqcheck_dqacct	*dqa;
+	struct xqcheck_dqtrx	*dqtrx;
+	struct xfbma		*counts;
+	int			error;
+
+	xqc = container_of(nb, struct xqcheck, apply_hook);
+
+	/* Map the dquot type to an incore counter object. */
+	switch (xfs_dquot_type(p->dqp)) {
+	case XFS_DQTYPE_USER:
+		counts = xqc->ucounts;
+		break;
+	case XFS_DQTYPE_GROUP:
+		counts = xqc->gcounts;
+		break;
+	case XFS_DQTYPE_PROJ:
+		counts = xqc->pcounts;
+		break;
+	default:
+		return NOTIFY_DONE;
+	}
+
+	mutex_lock(&xqc->lock);
+	if (xqc->hook_dead)
+		goto out_unlock;
+
+	/*
+	 * Find the shadow dqtrx for this transaction and dquot, if any deltas
+	 * need to be applied here.
+	 */
+	dqa = rhashtable_lookup_fast(&xqc->shadow_dquot_acct, &p->tp,
+			xqcheck_dqacct_hash_params);
+	if (!dqa)
+		goto out_unlock;
+	dqtrx = xqcheck_get_dqtrx(dqa, p->dqp);
+	if (!dqtrx || dqtrx->dqp == NULL)
+		goto out_unlock;
+
+	/* Update our shadow dquot. */
+	if (arg) {
+		error = xqcheck_update_incore(xqc, counts, p->dqp->q_id,
+				dqtrx->icount_delta,
+				dqtrx->bcount_delta + dqtrx->delbcnt_delta,
+				dqtrx->rtbcount_delta + dqtrx->delrtb_delta);
+		if (error)
+			goto fail;
+	}
+
+	/* Free the shadow accounting structure if that was the last user. */
+	dqa->refcount--;
+	if (dqa->refcount == 0) {
+		error = rhashtable_remove_fast(&xqc->shadow_dquot_acct,
+				&dqa->hash, xqcheck_dqacct_hash_params);
+		if (error)
+			goto fail;
+		xqcheck_dqacct_free(dqa, NULL);
+	}
+
+	goto out_unlock;
+fail:
+	xqc->hook_dead = true;
+out_unlock:
+	mutex_unlock(&xqc->lock);
+	return NOTIFY_DONE;
+}
+
 /* Record this inode's quota usage in our shadow quota counter data. */
 STATIC int
 xqcheck_inode(
@@ -139,20 +389,42 @@ xqcheck_inode(
 	}
 	xfs_inode_count_blocks(tp, ip, &nblks, &rtblks);
 
-	/* Update the shadow dquot counters. */
+	/* Update the shadow dquot counters if we haven't already failed. */
+	mutex_lock(&xqc->lock);
+	if (xqc->hook_dead) {
+		xchk_set_incomplete(xqc->sc);
+		error = -ECANCELED;
+		goto out_xqc_lock;
+	}
+
 	id = xfs_qm_id_for_quotatype(ip, XFS_DQTYPE_USER);
 	error = xqcheck_update_incore(xqc, xqc->ucounts, id, 1, nblks, rtblks);
 	if (error)
-		goto out_ilock;
+		goto out_xqc_lock;
 
 	id = xfs_qm_id_for_quotatype(ip, XFS_DQTYPE_GROUP);
 	error = xqcheck_update_incore(xqc, xqc->gcounts, id, 1, nblks, rtblks);
 	if (error)
-		goto out_ilock;
+		goto out_xqc_lock;
 
 	id = xfs_qm_id_for_quotatype(ip, XFS_DQTYPE_PROJ);
 	error = xqcheck_update_incore(xqc, xqc->pcounts, id, 1, nblks, rtblks);
+	if (error)
+		goto out_xqc_lock;
 
+	/*
+	 * Update the quotacheck scan cursor so that the quota hooks will
+	 * capture any quota updates made on behalf of this inode after we
+	 * unlock it.
+	 */
+	xqc->last_ino = ip->i_ino;
+
+out_xqc_lock:
+	if (error) {
+		xchk_set_incomplete(xqc->sc);
+		xqc->hook_dead = true;
+	}
+	mutex_unlock(&xqc->lock);
 out_ilock:
 	xfs_iunlock(ip, ilock_flags);
 	return error;
@@ -187,6 +459,15 @@ next_ag:
 
 next_ino:
 	error = xfs_iwalk_find_next(sc->mp, sc->tp, agi_bp, ino);
+
+	/*
+	 * Update the quotacheck scan cursor so that the quota hooks will begin
+	 * to capture quota updates being made by ongoing transactions.
+	 */
+	mutex_lock(&xqc->lock);
+	xqc->last_ino = *ino - 1;
+	mutex_unlock(&xqc->lock);
+
 	if (error || *ino == NULLFSINO) {
 		xfs_trans_brelse(sc->tp, agi_bp);
 		if (error == -EAGAIN)
@@ -271,6 +552,12 @@ xqcheck_compare_dquot(
 	struct xfbma		*counts = xqcheck_counters_for(xqc, dqtype);
 	int			error;
 
+	mutex_lock(&xqc->lock);
+	if (xqc->hook_dead) {
+		xchk_set_incomplete(xqc->sc);
+		error = -ECANCELED;
+		goto out_unlock;
+	}
 	error = xqcheck_get_shadow_dquot(counts, dqp->q_id, &xcdq);
 	if (error)
 		goto out_unlock;
@@ -290,6 +577,7 @@ xqcheck_compare_dquot(
 	}
 
 out_unlock:
+	mutex_unlock(&xqc->lock);
 	return error;
 }
 
@@ -311,8 +599,11 @@ xqcheck_walk_observations(
 	if (!counts)
 		return 0;
 
+	mutex_lock(&xqc->lock);
 	while (!(error = xfbma_iter_get(counts, &nr, &xcdq))) {
 		xfs_dqid_t	id = nr - 1;
+
+		mutex_unlock(&xqc->lock);
 
 		if (xchk_should_terminate(xqc->sc, &error))
 			return error;
@@ -329,7 +620,10 @@ xqcheck_walk_observations(
 		xfs_qm_dqput(dqp);
 		if (error)
 			return error;
+
+		mutex_lock(&xqc->lock);
 	}
+	mutex_unlock(&xqc->lock);
 
 	/* ENODATA means we hit the end of the array. */
 	if (error == -ENODATA)
@@ -370,6 +664,30 @@ static void
 xqcheck_teardown_scan(
 	struct xqcheck		*xqc)
 {
+	struct xfs_quotainfo	*qi = xqc->sc->mp->m_quotainfo;
+
+	/* Discourage any hook functions that might be running. */
+	mutex_lock(&xqc->lock);
+	xqc->hook_dead = true;
+	mutex_unlock(&xqc->lock);
+
+	/*
+	 * As noted above, the apply hook is responsible for cleaning up the
+	 * shadow dquot accounting data when a transaction completes.  The mod
+	 * hook must be removed before the apply hook so that we don't
+	 * mistakenly leave an active shadow account for the mod hook to get
+	 * its hands on.  No hooks should be running after these functions
+	 * return.
+	 */
+	xfs_hook_del(&qi->qi_mod_dquot_hooks, &xqc->mod_hook);
+	xfs_hook_del(&qi->qi_apply_dquot_deltas_hooks, &xqc->apply_hook);
+
+	if (xqc->shadow_dquot_acct.key_len) {
+		rhashtable_free_and_destroy(&xqc->shadow_dquot_acct,
+				xqcheck_dqacct_free, NULL);
+		xqc->shadow_dquot_acct.key_len = 0;
+	}
+
 	if (xqc->pcounts) {
 		xfbma_destroy(xqc->pcounts);
 		xqc->pcounts = NULL;
@@ -385,6 +703,7 @@ xqcheck_teardown_scan(
 		xqc->ucounts = NULL;
 	}
 
+	mutex_destroy(&xqc->lock);
 	xqc->sc = NULL;
 }
 
@@ -398,10 +717,14 @@ xqcheck_setup_scan(
 	struct xfs_scrub	*sc,
 	struct xqcheck		*xqc)
 {
+	struct xfs_quotainfo	*qi = sc->mp->m_quotainfo;
 	int			error;
 
 	ASSERT(xqc->sc == NULL);
 	xqc->sc = sc;
+
+	xqc->hook_dead = false;
+	mutex_init(&xqc->lock);
 
 	error = -ENOMEM;
 	if (xfs_this_quota_on(sc->mp, XFS_DQTYPE_USER)) {
@@ -424,6 +747,34 @@ xqcheck_setup_scan(
 		if (!xqc->pcounts)
 			goto out_teardown;
 	}
+
+	/*
+	 * Set up hash table to map transactions to our internal shadow dqtrx
+	 * structures.
+	 */
+	error = rhashtable_init(&xqc->shadow_dquot_acct,
+			&xqcheck_dqacct_hash_params);
+	if (error)
+		goto out_teardown;
+
+	/*
+	 * Hook into the quota code.  The hook only triggers for inodes that
+	 * were already scanned, and the scanner thread takes each inode's
+	 * ILOCK, which means that any in-progress inode updates will finish
+	 * before we can scan the inode.
+	 *
+	 * The apply hook (which removes the shadow dquot accounting struct)
+	 * must be installed before the mod hook so that we never fail to catch
+	 * the end of a quota update sequence and leave stale shadow data.
+	 */
+	error = xfs_hook_add(&qi->qi_apply_dquot_deltas_hooks,
+			&xqc->apply_hook, xqcheck_apply_deltas);
+	if (error)
+		goto out_teardown;
+	error = xfs_hook_add(&qi->qi_mod_dquot_hooks, &xqc->mod_hook,
+			xqcheck_mod_dquot);
+	if (error)
+		goto out_teardown;
 
 	/* Use deferred cleanup to pass the quota count data to repair. */
 	sc->buf_cleanup = (void (*)(void *))xqcheck_teardown_scan;
