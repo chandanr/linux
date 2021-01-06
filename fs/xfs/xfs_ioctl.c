@@ -1712,81 +1712,43 @@ xfs_ioc_scrub_metadata(
 
 int
 xfs_ioc_swapext(
-	xfs_swapext_t	*sxp)
+	struct xfs_swapext	*sxp)
 {
-	xfs_inode_t     *ip, *tip;
-	struct fd	f, tmp;
-	int		error = 0;
+	struct file_xchg_range	fxr = { 0 };
+	struct fd		fd2, fd1;
+	int			error = 0;
 
-	/* Pull information for the target fd */
-	f = fdget((int)sxp->sx_fdtarget);
-	if (!f.file) {
+	fd2 = fdget((int)sxp->sx_fdtarget);
+	if (!fd2.file)
+		return -EINVAL;
+
+	fd1 = fdget((int)sxp->sx_fdtmp);
+	if (!fd1.file) {
 		error = -EINVAL;
-		goto out;
+		goto dest_fdput;
 	}
 
-	if (!(f.file->f_mode & FMODE_WRITE) ||
-	    !(f.file->f_mode & FMODE_READ) ||
-	    (f.file->f_flags & O_APPEND)) {
-		error = -EBADF;
-		goto out_put_file;
-	}
+	fxr.file1_fd = sxp->sx_fdtmp;
+	fxr.length = sxp->sx_length;
+	fxr.flags = FILE_XCHG_RANGE_NONATOMIC | FILE_XCHG_RANGE_FILE2_FRESH |
+		    FILE_XCHG_RANGE_FULL_FILES;
+	fxr.file2_ino = sxp->sx_stat.bs_ino;
+	fxr.file2_mtime = sxp->sx_stat.bs_mtime.tv_sec;
+	fxr.file2_ctime = sxp->sx_stat.bs_ctime.tv_sec;
+	fxr.file2_mtime_nsec = sxp->sx_stat.bs_mtime.tv_nsec;
+	fxr.file2_ctime_nsec = sxp->sx_stat.bs_ctime.tv_nsec;
 
-	tmp = fdget((int)sxp->sx_fdtmp);
-	if (!tmp.file) {
-		error = -EINVAL;
-		goto out_put_file;
-	}
-
-	if (!(tmp.file->f_mode & FMODE_WRITE) ||
-	    !(tmp.file->f_mode & FMODE_READ) ||
-	    (tmp.file->f_flags & O_APPEND)) {
-		error = -EBADF;
-		goto out_put_tmp_file;
-	}
-
-	if (IS_SWAPFILE(file_inode(f.file)) ||
-	    IS_SWAPFILE(file_inode(tmp.file))) {
-		error = -EINVAL;
-		goto out_put_tmp_file;
-	}
+	error = vfs_xchg_file_range(fd1.file, fd2.file, &fxr);
 
 	/*
-	 * We need to ensure that the fds passed in point to XFS inodes
-	 * before we cast and access them as XFS structures as we have no
-	 * control over what the user passes us here.
+	 * The old implementation returned EFAULT if the swap range was not
+	 * the entirety of both files.
 	 */
-	if (f.file->f_op != &xfs_file_operations ||
-	    tmp.file->f_op != &xfs_file_operations) {
-		error = -EINVAL;
-		goto out_put_tmp_file;
-	}
-
-	ip = XFS_I(file_inode(f.file));
-	tip = XFS_I(file_inode(tmp.file));
-
-	if (ip->i_mount != tip->i_mount) {
-		error = -EINVAL;
-		goto out_put_tmp_file;
-	}
-
-	if (ip->i_ino == tip->i_ino) {
-		error = -EINVAL;
-		goto out_put_tmp_file;
-	}
-
-	if (XFS_FORCED_SHUTDOWN(ip->i_mount)) {
-		error = -EIO;
-		goto out_put_tmp_file;
-	}
-
-	error = xfs_swap_extents(ip, tip, sxp);
-
- out_put_tmp_file:
-	fdput(tmp);
- out_put_file:
-	fdput(f);
- out:
+	if (error == -EDOM)
+		error = -EFAULT;
+	fdput(fd1);
+dest_fdput:
+	fdput(fd2);
 	return error;
 }
 
@@ -2037,14 +1999,10 @@ xfs_file_ioctl(
 	case XFS_IOC_SWAPEXT: {
 		struct xfs_swapext	sxp;
 
-		if (copy_from_user(&sxp, arg, sizeof(xfs_swapext_t)))
+		if (copy_from_user(&sxp, arg, sizeof(struct xfs_swapext)))
 			return -EFAULT;
-		error = mnt_want_write_file(filp);
-		if (error)
-			return error;
-		error = xfs_ioc_swapext(&sxp);
-		mnt_drop_write_file(filp);
-		return error;
+
+		return xfs_ioc_swapext(&sxp);
 	}
 
 	case XFS_IOC_FSCOUNTS: {
