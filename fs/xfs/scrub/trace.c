@@ -13,6 +13,7 @@
 #include "xfs_inode.h"
 #include "xfs_btree.h"
 #include "xfs_quota_defs.h"
+#include "xfs_da_format.h"
 #include "scrub/scrub.h"
 #include "scrub/xfile.h"
 

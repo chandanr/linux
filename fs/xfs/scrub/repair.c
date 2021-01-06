@@ -37,6 +37,8 @@
 #include "xfs_bmap_btree.h"
 #include "xfs_trans_space.h"
 #include "xfs_dir2.h"
+#include "xfs_attr.h"
+#include "xfs_swapext.h"
 #include "xfs_xchgrange.h"
 #include "scrub/scrub.h"
 #include "scrub/common.h"
@@ -1576,6 +1578,17 @@ xrep_metadata_inode_forks(
 			return error;
 	}
 
+	/* Clear the attr forks since metadata shouldn't have that. */
+	if (xfs_inode_hasattr(sc->ip)) {
+		if (!dirty) {
+			dirty = true;
+			xfs_trans_ijoin(sc->tp, sc->ip, 0);
+		}
+		error = xrep_xattr_reset_fork(sc, sc->ip);
+		if (error)
+			return error;
+	}
+
 	/*
 	 * If we modified the inode, roll the transaction but don't rejoin the
 	 * inode to the new transaction because xrep_bmap_data can do that.
@@ -1932,4 +1945,127 @@ xrep_set_file_contents(
 out:
 	xfs_buf_delwri_cancel(&buffers_list);
 	return error;
+}
+
+/*
+ * See if this buffer can pass the given ->verify_struct() function.
+ *
+ * If the buffer already has ops attached and they're not the ones that were
+ * passed in, we reject the buffer.  Otherwise, we perform the structure test
+ * (note that we do not check CRCs) and return the outcome of the test.  The
+ * buffer ops and error state are left unchanged.
+ */
+bool
+xrep_buf_verify_struct(
+	struct xfs_buf			*bp,
+	const struct xfs_buf_ops	*ops)
+{
+	const struct xfs_buf_ops	*old_ops = bp->b_ops;
+	xfs_failaddr_t			fa;
+	int				old_error;
+
+	if (old_ops) {
+		if (old_ops != ops)
+			return false;
+	}
+
+	old_error = bp->b_error;
+	bp->b_ops = ops;
+	fa = bp->b_ops->verify_struct(bp);
+	bp->b_ops = old_ops;
+	bp->b_error = old_error;
+
+	return fa == NULL;
+}
+
+/*
+ * Fill out the swapext request and resource estimation structures in
+ * preparation for swapping the contents of a metadata file that we've rebuilt
+ * in the temp file.
+ */
+int
+xrep_swapext_prep(
+	struct xfs_scrub	*sc,
+	int			whichfork,
+	struct xfs_swapext_req	*req,
+	struct xfs_swapext_res	*res)
+{
+	struct xfs_ifork	*ifp, *tifp;
+	int			state = 0;
+
+	ASSERT(whichfork != XFS_COW_FORK);
+
+	/* Both files should have the relevant forks. */
+	ifp = XFS_IFORK_PTR(sc->ip, whichfork);
+	tifp = XFS_IFORK_PTR(sc->tempip, whichfork);
+	if (!ifp || !tifp) {
+		ASSERT(0);
+		return -EINVAL;
+	}
+
+	memset(res, 0, sizeof(struct xfs_swapext_res));
+	req->ip1 = sc->tempip;
+	req->ip2 = sc->ip;
+	req->startoff1 = 0;
+	req->startoff2 = 0;
+	req->whichfork = whichfork;
+	req->blockcount = XFS_MAX_FILEOFF;
+	req->flags = 0;
+
+	/*
+	 * If we're repairing xattrs or directories, always try to convert ip2
+	 * to short format after swapping.
+	 */
+	if (whichfork == XFS_ATTR_FORK || S_ISDIR(VFS_I(sc->ip)->i_mode))
+		req->flags |= XFS_SWAPEXT_INO2_SHORTFORM;
+
+	/*
+	 * Deal with either fork being in local format.  The swapext code only
+	 * knows how to exchange block mappings for regular files, so we only
+	 * have to know about local format for xattrs and directories.
+	 */
+	if (ifp->if_format == XFS_DINODE_FMT_LOCAL)
+		state |= 1;
+	if (tifp->if_format == XFS_DINODE_FMT_LOCAL)
+		state |= 2;
+	switch (state) {
+	case 0:
+		/* Both files have mapped extents; use the regular estimate. */
+		return xfs_xchg_range_estimate(req, res);
+	case 1:
+		/*
+		 * The file being repaired is in local format, but the temp
+		 * file has mapped extents.  To perform the swap, the file
+		 * being repaired will be reinitialized to have an empty extent
+		 * map, so the number of exchanges is the temporary file's
+		 * extent count.
+		 */
+		res->ip1_bcount = sc->tempip->i_nblocks;
+		res->nr_exchanges = tifp->if_nextents;
+		break;
+	case 2:
+		/*
+		 * The temporary file is in local format, but the file being
+		 * repaired has mapped extents.  To perform the swap, the temp
+		 * file will be converted to have a single block, so the number
+		 * of exchanges is (worst case) the extent count of the file
+		 * being repaired plus one more.
+		 */
+		res->ip1_bcount = 1;
+		res->ip2_bcount = sc->ip->i_nblocks;
+		res->nr_exchanges = ifp->if_nextents;
+		break;
+	case 3:
+		/*
+		 * Both forks are in local format.  To perform the swap, the
+		 * file being repaired will be reinitialized to have an empty
+		 * extent map and the temp file will be converted to have a
+		 * single block.  Only one exchange is required.
+		 */
+		res->ip1_bcount = 1;
+		res->nr_exchanges = 1;
+		break;
+	}
+
+	return xfs_swapext_estimate_overhead(req, res);
 }

@@ -19,6 +19,7 @@
 #include "scrub/common.h"
 #include "scrub/dabtree.h"
 #include "scrub/attr.h"
+#include "scrub/repair.h"
 
 /*
  * Allocate enough memory to hold an attr value and attr block bitmaps,
@@ -72,6 +73,10 @@ xchk_setup_xattr(
 	struct xfs_scrub	*sc)
 {
 	int			error;
+
+	error = xrep_setup_tempfile(sc, S_IFREG);
+	if (error)
+		return error;
 
 	/*
 	 * We failed to get memory while checking attrs, so this time try to
@@ -181,7 +186,7 @@ fail_xref:
  * Within a char, the lowest bit of the char represents the byte with
  * the smallest address
  */
-STATIC bool
+bool
 xchk_xattr_set_map(
 	struct xfs_scrub	*sc,
 	unsigned long		*map,

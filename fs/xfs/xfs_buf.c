@@ -530,8 +530,12 @@ _xfs_buf_obj_cmp(
 		 * it stale has not yet committed. i.e. we are
 		 * reallocating a busy extent. Skip this buffer and
 		 * continue searching for an exact match.
+		 *
+		 * Note: If we're scanning for incore buffers to stale, don't
+		 * complain if we find non-stale buffers.
 		 */
-		ASSERT(bp->b_flags & XBF_STALE);
+		if (!(map->bm_flags & XBM_SCAN_STALE))
+			ASSERT(bp->b_flags & XBF_STALE);
 		return 1;
 	}
 	return 0;
@@ -596,6 +600,9 @@ xfs_buf_find(
 	int			i;
 
 	*found_bp = NULL;
+
+	if (flags & XBF_SCAN_STALE)
+		cmap.bm_flags |= XBM_SCAN_STALE;
 
 	for (i = 0; i < nmaps; i++)
 		cmap.bm_len += map[i].bm_len;
