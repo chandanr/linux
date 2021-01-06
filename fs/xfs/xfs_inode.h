@@ -528,4 +528,7 @@ void xfs_inode_count_blocks(struct xfs_trans *tp, struct xfs_inode *ip,
 		xfs_filblks_t *dblocks, xfs_filblks_t *rblocks);
 unsigned int xfs_inode_alloc_unitsize(struct xfs_inode *ip);
 
+void xfs_ialloc_inherit_args(struct user_namespace *mnt_userns,
+		struct xfs_inode *dp, struct xfs_ialloc_args *args);
+
 #endif	/* __XFS_INODE_H__ */
