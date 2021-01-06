@@ -2773,7 +2773,7 @@ DEFINE_EVENT(xfs_phys_extent_deferred_class, name, \
 DECLARE_EVENT_CLASS(xfs_map_extent_deferred_class,
 	TP_PROTO(struct xfs_mount *mp, xfs_agnumber_t agno,
 		 int op,
-		 xfs_agblock_t agbno,
+		 xfs_fsblock_t agbno,
 		 xfs_ino_t ino,
 		 int whichfork,
 		 xfs_fileoff_t offset,
@@ -2784,7 +2784,7 @@ DECLARE_EVENT_CLASS(xfs_map_extent_deferred_class,
 		__field(dev_t, dev)
 		__field(xfs_agnumber_t, agno)
 		__field(xfs_ino_t, ino)
-		__field(xfs_agblock_t, agbno)
+		__field(xfs_fsblock_t, agbno)
 		__field(int, whichfork)
 		__field(xfs_fileoff_t, l_loff)
 		__field(xfs_filblks_t, l_len)
@@ -2802,7 +2802,7 @@ DECLARE_EVENT_CLASS(xfs_map_extent_deferred_class,
 		__entry->l_state = state;
 		__entry->op = op;
 	),
-	TP_printk("dev %d:%d op %d agno %u agbno %u owner %lld %s offset %llu len %llu state %d",
+	TP_printk("dev %d:%d op %d agno %u agbno %llu owner %lld %s offset %llu len %llu state %d",
 		  MAJOR(__entry->dev), MINOR(__entry->dev),
 		  __entry->op,
 		  __entry->agno,
@@ -2817,7 +2817,7 @@ DECLARE_EVENT_CLASS(xfs_map_extent_deferred_class,
 DEFINE_EVENT(xfs_map_extent_deferred_class, name, \
 	TP_PROTO(struct xfs_mount *mp, xfs_agnumber_t agno, \
 		 int op, \
-		 xfs_agblock_t agbno, \
+		 xfs_fsblock_t agbno, \
 		 xfs_ino_t ino, \
 		 int whichfork, \
 		 xfs_fileoff_t offset, \

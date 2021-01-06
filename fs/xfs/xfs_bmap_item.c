@@ -282,7 +282,8 @@ xfs_trans_set_bmap_flags(
 	struct xfs_map_extent		*bmap,
 	enum xfs_bmap_intent_type	type,
 	int				whichfork,
-	xfs_exntst_t			state)
+	xfs_exntst_t			state,
+	bool				rtfile)
 {
 	bmap->me_flags = 0;
 	switch (type) {
@@ -297,6 +298,8 @@ xfs_trans_set_bmap_flags(
 		bmap->me_flags |= XFS_BMAP_EXTENT_UNWRITTEN;
 	if (whichfork == XFS_ATTR_FORK)
 		bmap->me_flags |= XFS_BMAP_EXTENT_ATTR_FORK;
+	if (rtfile && whichfork == XFS_DATA_FORK)
+		bmap->me_flags |= XFS_BMAP_EXTENT_REALTIME;
 }
 
 /* Log bmap updates in the intent item. */
@@ -325,7 +328,8 @@ xfs_bmap_update_log_item(
 	map->me_startoff = bmap->bi_bmap.br_startoff;
 	map->me_len = bmap->bi_bmap.br_blockcount;
 	xfs_trans_set_bmap_flags(map, bmap->bi_type, bmap->bi_whichfork,
-			bmap->bi_bmap.br_state);
+			bmap->bi_bmap.br_state,
+			XFS_IS_REALTIME_INODE(bmap->bi_owner));
 }
 
 static struct xfs_log_item *

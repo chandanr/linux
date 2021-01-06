@@ -6233,14 +6233,20 @@ __xfs_bmap_add(
 {
 	struct xfs_bmap_intent		*bi;
 
-	trace_xfs_bmap_defer(tp->t_mountp,
-			XFS_FSB_TO_AGNO(tp->t_mountp, bmap->br_startblock),
-			type,
-			XFS_FSB_TO_AGBNO(tp->t_mountp, bmap->br_startblock),
-			ip->i_ino, whichfork,
-			bmap->br_startoff,
-			bmap->br_blockcount,
-			bmap->br_state);
+	if (xfs_ifork_is_realtime(ip, whichfork))
+		trace_xfs_bmap_defer(tp->t_mountp, NULLAGNUMBER, type,
+				bmap->br_startblock, ip->i_ino, whichfork,
+				bmap->br_startoff, bmap->br_blockcount,
+				bmap->br_state);
+	else
+		trace_xfs_bmap_defer(tp->t_mountp,
+				XFS_FSB_TO_AGNO(tp->t_mountp,
+						bmap->br_startblock),
+				type,
+				XFS_FSB_TO_AGBNO(tp->t_mountp,
+						 bmap->br_startblock),
+				ip->i_ino, whichfork, bmap->br_startoff,
+				bmap->br_blockcount, bmap->br_state);
 
 	bi = kmem_alloc(sizeof(struct xfs_bmap_intent), KM_NOFS);
 	INIT_LIST_HEAD(&bi->bi_list);
@@ -6298,10 +6304,16 @@ xfs_bmap_finish_one(
 
 	ASSERT(tp->t_firstblock == NULLFSBLOCK);
 
-	trace_xfs_bmap_deferred(tp->t_mountp,
-			XFS_FSB_TO_AGNO(tp->t_mountp, startblock), type,
-			XFS_FSB_TO_AGBNO(tp->t_mountp, startblock),
-			ip->i_ino, whichfork, startoff, *blockcount, state);
+	if (xfs_ifork_is_realtime(ip, whichfork))
+		trace_xfs_bmap_deferred(tp->t_mountp, NULLAGNUMBER, type,
+				startblock, ip->i_ino, whichfork, startoff,
+				*blockcount, state);
+	else
+		trace_xfs_bmap_deferred(tp->t_mountp,
+				XFS_FSB_TO_AGNO(tp->t_mountp, startblock), type,
+				XFS_FSB_TO_AGBNO(tp->t_mountp, startblock),
+				ip->i_ino, whichfork, startoff, *blockcount,
+				state);
 
 	if (WARN_ON_ONCE(whichfork != XFS_DATA_FORK)) {
 		xfs_bmap_mark_sick(ip, whichfork);
