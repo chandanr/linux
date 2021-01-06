@@ -69,6 +69,12 @@ struct xfs_quotainfo {
 	/* Minimum and maximum quota expiration timestamp values. */
 	time64_t		qi_expiry_min;
 	time64_t		qi_expiry_max;
+
+#if IS_ENABLED(CONFIG_XFS_ONLINE_SCRUB)
+	/* online quotacheck stuff */
+	struct xfs_hook_chain	qi_mod_dquot_hooks;
+	struct xfs_hook_chain	qi_apply_dquot_deltas_hooks;
+#endif
 };
 
 static inline struct radix_tree_root *
@@ -104,6 +110,15 @@ xfs_quota_inode(struct xfs_mount *mp, xfs_dqtype_t type)
 	}
 	return NULL;
 }
+
+/* Parameters for xfs_trans_mod_dquot hook. */
+struct xfs_trans_mod_dquot_params {
+	struct xfs_trans	*tp;
+	struct xfs_inode	*ip;
+	struct xfs_dquot	*dqp;
+	uint			field;
+	int64_t			delta;
+};
 
 extern void	xfs_trans_mod_dquot(struct xfs_trans *tp, struct xfs_dquot *dqp,
 				    uint field, int64_t delta);

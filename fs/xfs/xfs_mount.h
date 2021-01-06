@@ -56,6 +56,10 @@ struct xfs_error_cfg {
 	long		retry_timeout;	/* in jiffies, -1 = infinite */
 };
 
+struct xfs_hook_chain {
+	struct srcu_notifier_head	head;
+};
+
 /*
  * Per-cpu deferred inode inactivation GC lists.
  */
@@ -386,5 +390,11 @@ struct xfs_error_cfg * xfs_error_get_cfg(struct xfs_mount *mp,
 		int error_class, int error);
 void xfs_force_summary_recalc(struct xfs_mount *mp);
 void xfs_mod_delalloc(struct xfs_mount *mp, int64_t delta);
+
+void xfs_hook_init(struct xfs_hook_chain *chain);
+int xfs_hook_add(struct xfs_hook_chain *chain, struct notifier_block *hook,
+		 notifier_fn_t fn);
+void xfs_hook_del(struct xfs_hook_chain *chain, struct notifier_block *hook);
+int xfs_hook_call(struct xfs_hook_chain *chain, unsigned long val, void *priv);
 
 #endif	/* __XFS_MOUNT_H__ */
