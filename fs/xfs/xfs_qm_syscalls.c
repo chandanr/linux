@@ -18,6 +18,8 @@
 #include "xfs_quota.h"
 #include "xfs_qm.h"
 #include "xfs_icache.h"
+#include "xfs_imeta.h"
+#include "xfs_da_format.h"
 
 int
 xfs_qm_scall_quotaoff(
@@ -62,7 +64,7 @@ xfs_qm_scall_trunc_qfile(
 	if (ino == NULLFSINO)
 		return 0;
 
-	error = xfs_iget(mp, NULL, ino, 0, 0, &ip);
+	error = xfs_imeta_iget(mp, ino, XFS_DIR3_FT_REG_FILE, &ip);
 	if (error)
 		return error;
 
