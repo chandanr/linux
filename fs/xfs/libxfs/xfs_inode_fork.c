@@ -428,44 +428,46 @@ xfs_ifork_move_broot(
  */
 void
 xfs_iroot_realloc(
-	xfs_inode_t		*ip,
+	struct xfs_inode	*ip,
 	int			rec_diff,
 	int			whichfork)
 {
 	struct xfs_mount	*mp = ip->i_mount;
-	int			cur_max;
 	struct xfs_ifork	*ifp = XFS_IFORK_PTR(ip, whichfork);
 	struct xfs_btree_block	*new_broot;
-	int			new_max;
 	size_t			new_size;
 	size_t			old_size = ifp->if_broot_bytes;
+	int			cur_max;
+	int			new_max;
+
+	/* Handle degenerate cases. */
+	if (rec_diff == 0)
+		return;
 
 	/*
-	 * Handle the degenerate case quietly.
+	 * If there wasn't any memory allocated before, just allocate it now
+	 * and get out.
 	 */
-	if (rec_diff == 0) {
+	if (old_size == 0) {
+		ASSERT(rec_diff > 0);
+
+		new_size = xfs_bmap_broot_space_calc(mp, rec_diff);
+		xfs_iroot_alloc(ip, whichfork, new_size);
 		return;
 	}
 
-	if (rec_diff > 0) {
-		/*
-		 * If there wasn't any memory allocated before, just
-		 * allocate it now and get out.
-		 */
-		if (old_size == 0) {
-			new_size = xfs_bmap_broot_space_calc(mp, rec_diff);
-			xfs_iroot_alloc(ip, whichfork, new_size);
-			return;
-		}
+	/* Compute the new and old record count and space requirements. */
+	cur_max = xfs_bmbt_maxrecs(mp, old_size, 0);
+	new_max = cur_max + rec_diff;
+	ASSERT(new_max >= 0);
+	new_size = xfs_bmap_broot_space_calc(mp, new_max);
 
+	if (rec_diff > 0) {
 		/*
 		 * If there is already an existing if_broot, then we need
 		 * to realloc() it and shift the pointers to their new
 		 * location.
 		 */
-		cur_max = xfs_bmbt_maxrecs(mp, old_size, 0);
-		new_max = cur_max + rec_diff;
-		new_size = xfs_bmap_broot_space_calc(mp, new_max);
 		ifp->if_broot = krealloc(ifp->if_broot, new_size,
 					 GFP_NOFS | __GFP_NOFAIL);
 		ifp->if_broot_bytes = new_size;
@@ -477,14 +479,8 @@ xfs_iroot_realloc(
 	/*
 	 * rec_diff is less than 0.  In this case, we are shrinking the
 	 * if_broot buffer.  It must already exist.  If we go to zero
-	 * records, just get rid of the root and clear the status bit.
+	 * bytes, just get rid of the root and clear the status bit.
 	 */
-	ASSERT((ifp->if_broot != NULL) && (old_size > 0));
-	cur_max = xfs_bmbt_maxrecs(mp, old_size, 0);
-	new_max = cur_max + rec_diff;
-	ASSERT(new_max >= 0);
-
-	new_size = xfs_bmap_broot_space_calc(mp, new_max);
 	if (new_size == 0) {
 		xfs_iroot_free(ip, whichfork);
 		return;
@@ -497,8 +493,7 @@ xfs_iroot_realloc(
 
 	kmem_free(ifp->if_broot);
 	ifp->if_broot = new_broot;
-	ifp->if_broot_bytes = (int)new_size;
-	return;
+	ifp->if_broot_bytes = new_size;
 }
 
 
