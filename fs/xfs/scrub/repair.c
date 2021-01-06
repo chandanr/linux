@@ -24,6 +24,7 @@
 #include "xfs_extent_busy.h"
 #include "xfs_ag_resv.h"
 #include "xfs_quota.h"
+#include "xfs_bmap.h"
 #include "scrub/scrub.h"
 #include "scrub/common.h"
 #include "scrub/trace.h"
@@ -147,6 +148,16 @@ xrep_roll_ag_trans(
 		xfs_trans_bjoin(sc->tp, sc->sa.agfl_bp);
 
 	return 0;
+}
+
+/* Roll the scrub transaction, holding the primary metadata locked. */
+int
+xrep_roll_trans(
+	struct xfs_scrub	*sc)
+{
+	if (!sc->ip)
+		return xrep_roll_ag_trans(sc);
+	return xfs_trans_roll_inode(&sc->tp, sc->ip);
 }
 
 /*
@@ -519,13 +530,15 @@ xrep_reap_block(
 	struct xfs_scrub		*sc,
 	xfs_fsblock_t			fsbno,
 	const struct xfs_owner_info	*oinfo,
-	enum xfs_ag_resv_type		resv)
+	enum xfs_ag_resv_type		resv,
+	unsigned int			*deferred)
 {
 	struct xfs_btree_cur		*cur;
 	struct xfs_buf			*agf_bp = NULL;
 	xfs_agnumber_t			agno;
 	xfs_agblock_t			agbno;
 	bool				has_other_rmap;
+	bool				need_roll = true;
 	int				error;
 
 	agno = XFS_FSB_TO_AGNO(sc->mp, fsbno);
@@ -570,17 +583,25 @@ xrep_reap_block(
 		xrep_reap_invalidate_block(sc, fsbno);
 		error = xrep_put_freelist(sc, agbno);
 	} else {
+		/*
+		 * Use deferred frees to get rid of the old btree blocks to try
+		 * to minimize the window in which we could crash and lose the
+		 * old blocks.  However, we still need to roll the transaction
+		 * every 100 or so EFIs so that we don't exceed the log
+		 * reservation.
+		 */
 		xrep_reap_invalidate_block(sc, fsbno);
-		error = xfs_free_extent(sc->tp, fsbno, 1, oinfo, resv);
+		__xfs_bmap_add_free(sc->tp, fsbno, 1, oinfo, false);
+		(*deferred)++;
+		need_roll = *deferred > 100;
 	}
 	if (agf_bp != sc->sa.agf_bp)
 		xfs_trans_brelse(sc->tp, agf_bp);
-	if (error)
+	if (error || !need_roll)
 		return error;
 
-	if (sc->ip)
-		return xfs_trans_roll_inode(&sc->tp, sc->ip);
-	return xrep_roll_ag_trans(sc);
+	*deferred = 0;
+	return xrep_roll_trans(sc);
 
 out_free:
 	if (agf_bp != sc->sa.agf_bp)
@@ -599,6 +620,7 @@ xrep_reap_extents(
 	struct xbitmap_range		*bmr;
 	struct xbitmap_range		*n;
 	xfs_fsblock_t			fsbno;
+	unsigned int			deferred = 0;
 	int				error = 0;
 
 	ASSERT(xfs_sb_version_hasrmapbt(&sc->mp->m_sb));
@@ -610,12 +632,15 @@ xrep_reap_extents(
 				XFS_FSB_TO_AGNO(sc->mp, fsbno),
 				XFS_FSB_TO_AGBNO(sc->mp, fsbno), 1);
 
-		error = xrep_reap_block(sc, fsbno, oinfo, type);
+		error = xrep_reap_block(sc, fsbno, oinfo, type, &deferred);
 		if (error)
 			break;
 	}
 
-	return error;
+	if (error || deferred == 0)
+		return error;
+
+	return xrep_roll_trans(sc);
 }
 
 /*
