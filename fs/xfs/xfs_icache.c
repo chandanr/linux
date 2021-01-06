@@ -25,6 +25,9 @@
 #include "xfs_ialloc.h"
 #include "xfs_ag.h"
 #include "xfs_health.h"
+#include "xfs_da_format.h"
+#include "xfs_dir2.h"
+#include "xfs_imeta.h"
 
 #include <linux/iversion.h>
 
@@ -1317,6 +1320,39 @@ xfs_icache_inode_is_allocated(
 	*inuse = !!(VFS_I(ip)->i_mode);
 	xfs_irele(ip);
 	return 0;
+}
+
+/* Get a metadata inode.  The ftype must match exactly. */
+int
+xfs_imeta_iget(
+	struct xfs_mount	*mp,
+	xfs_ino_t		ino,
+	unsigned char		ftype,
+	struct xfs_inode	**ipp)
+{
+	struct xfs_inode	*ip;
+	int			error;
+
+	ASSERT(ftype != XFS_DIR3_FT_UNKNOWN);
+
+	error = xfs_iget(mp, NULL, ino, XFS_IGET_UNTRUSTED, 0, &ip);
+	if (error == -EFSCORRUPTED)
+		goto whine;
+	if (error)
+		return error;
+
+	if (VFS_I(ip)->i_nlink == 0)
+		goto bad_rele;
+	if (xfs_mode_to_ftype(VFS_I(ip)->i_mode) != ftype)
+		goto bad_rele;
+
+	*ipp = ip;
+	return 0;
+bad_rele:
+	xfs_irele(ip);
+whine:
+	xfs_err(mp, "metadata inode 0x%llx is corrupt", ino);
+	return -EFSCORRUPTED;
 }
 
 #ifdef CONFIG_XFS_QUOTA
