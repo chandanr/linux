@@ -675,51 +675,21 @@ xfs_inode_inherit_flags2(
 	}
 }
 
-/*
- * Initialise a newly allocated inode and return the in-core inode to the
- * caller locked exclusively.
- */
-static int
-xfs_init_new_inode(
+/* Initialise an inode's attributes. */
+static void
+xfs_inode_init(
 	struct xfs_trans	*tp,
-	xfs_ino_t		ino,
 	const struct xfs_ialloc_args *args,
-	struct xfs_inode	**ipp)
+	struct xfs_inode	*ip)
 {
 	struct xfs_inode	*pip = args->pip;
 	struct inode		*dir = pip ? VFS_I(pip) : NULL;
 	struct xfs_mount	*mp = tp->t_mountp;
-	struct xfs_inode	*ip;
-	struct inode		*inode;
+	struct inode		*inode = VFS_I(ip);
 	unsigned int		flags;
 	int			times = XFS_ICHGTIME_MOD | XFS_ICHGTIME_CHG |
 					XFS_ICHGTIME_ACCESS;
-	int			error;
 
-	/*
-	 * Protect against obviously corrupt allocation btree records. Later
-	 * xfs_iget checks will catch re-allocation of other active in-memory
-	 * and on-disk inodes. If we don't catch reallocating the parent inode
-	 * here we will deadlock in xfs_iget() so we have to do these checks
-	 * first.
-	 */
-	if ((pip && ino == pip->i_ino) || !xfs_verify_dir_ino(mp, ino)) {
-		xfs_alert(mp, "Allocated a known in-use inode 0x%llx!", ino);
-		xfs_agno_mark_sick(mp, XFS_INO_TO_AGNO(mp, ino),
-				XFS_SICK_AG_INOBT);
-		return -EFSCORRUPTED;
-	}
-
-	/*
-	 * Get the in-core inode with the lock held exclusively to prevent
-	 * others from looking at until we're done.
-	 */
-	error = xfs_iget(mp, tp, ino, XFS_IGET_CREATE, XFS_ILOCK_EXCL, &ip);
-	if (error)
-		return error;
-
-	ASSERT(ip != NULL);
-	inode = VFS_I(ip);
 	set_nlink(inode, args->nlink);
 	inode->i_rdev = args->rdev;
 	ip->i_projid = args->prid;
@@ -818,8 +788,32 @@ xfs_init_new_inode(
 
 	/* now that we have an i_mode we can setup the inode structure */
 	xfs_setup_inode(ip);
+}
 
-	*ipp = ip;
+/*
+ * Initialise a newly allocated inode and return the in-core inode to the
+ * caller locked exclusively.
+ */
+static int
+xfs_init_new_inode(
+	struct xfs_trans	*tp,
+	xfs_ino_t		ino,
+	const struct xfs_ialloc_args *args,
+	struct xfs_inode	**ipp)
+{
+	struct xfs_mount	*mp = tp->t_mountp;
+	int			error;
+
+	/*
+	 * Get the in-core inode with the lock held exclusively to prevent
+	 * others from looking at until we're done.
+	 */
+	error = xfs_iget(mp, tp, ino, XFS_IGET_CREATE, XFS_ILOCK_EXCL, ipp);
+	if (error)
+		return error;
+
+	ASSERT(*ipp != NULL);
+	xfs_inode_init(tp, args, *ipp);
 	return 0;
 }
 
@@ -866,6 +860,7 @@ xfs_dir_ialloc(
 		.rdev		= rdev,
 		.mode		= mode,
 	};
+	struct xfs_mount	*mp = (*tpp)->t_mountp;
 	struct xfs_buf		*agibp;
 	xfs_ino_t		parent_ino = dp ? dp->i_ino : 0;
 	xfs_ino_t		ino;
@@ -891,6 +886,20 @@ xfs_dir_ialloc(
 	if (error)
 		return error;
 	ASSERT(ino != NULLFSINO);
+
+	/*
+	 * Protect against obviously corrupt allocation btree records. Later
+	 * xfs_iget checks will catch re-allocation of other active in-memory
+	 * and on-disk inodes. If we don't catch reallocating the parent inode
+	 * here we will deadlock in xfs_iget() so we have to do these checks
+	 * first.
+	 */
+	if ((dp && ino == dp->i_ino) || !xfs_verify_dir_ino(mp, ino)) {
+		xfs_alert(mp, "Allocated a known in-use inode 0x%llx!", ino);
+		xfs_agno_mark_sick(mp, XFS_INO_TO_AGNO(mp, ino),
+				XFS_SICK_AG_INOBT);
+		return -EFSCORRUPTED;
+	}
 
 	if (init_xattrs)
 		args.flags |= XFS_IALLOC_ARGS_INIT_XATTRS;
