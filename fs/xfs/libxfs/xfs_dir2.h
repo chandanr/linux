@@ -261,5 +261,10 @@ int xfs_dir_exchange(struct xfs_trans *tp, struct xfs_inode *dp1,
 		struct xfs_name *name1, struct xfs_inode *ip1,
 		struct xfs_inode *dp2, struct xfs_name *name2,
 		struct xfs_inode *ip2, unsigned int spaceres);
+int xfs_dir_rename(struct xfs_trans *tp, struct xfs_inode *src_dp,
+		struct xfs_name *src_name, struct xfs_inode *src_ip,
+		struct xfs_inode *target_dp, struct xfs_name *target_name,
+		struct xfs_inode *target_ip, unsigned int spaceres,
+		struct xfs_inode *wip);
 
 #endif	/* __XFS_DIR2_H__ */
