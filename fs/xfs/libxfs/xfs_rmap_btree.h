@@ -50,7 +50,7 @@ void xfs_rmapbt_commit_staged_btree(struct xfs_btree_cur *cur,
 		struct xfs_trans *tp, struct xfs_buf *agbp);
 unsigned int xfs_rmapbt_maxrecs(struct xfs_mount *mp, unsigned int blocklen,
 		bool leaf);
-extern void xfs_rmapbt_compute_maxlevels(struct xfs_mount *mp);
+unsigned int xfs_rmapbt_compute_maxlevels(struct xfs_mount *mp);
 
 extern xfs_extlen_t xfs_rmapbt_calc_size(struct xfs_mount *mp,
 		unsigned long long len);
