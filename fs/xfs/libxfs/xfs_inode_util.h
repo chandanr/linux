@@ -52,12 +52,20 @@ struct xfs_ialloc_args {
 #define	XFS_ICHGTIME_ACCESS	0x8	/* last access timestamp */
 void xfs_trans_ichgtime(struct xfs_trans *tp, struct xfs_inode *ip, int flags);
 
+/* Needed for xfs_repair. */
 void xfs_inode_init(struct xfs_trans *tp, const struct xfs_ialloc_args *args,
 		struct xfs_inode *ip);
+
+int xfs_dir_ialloc(struct xfs_trans **tpp, const struct xfs_ialloc_args *args,
+		   struct xfs_inode **ipp);
 
 /* The libxfs client must provide this group of helper functions. */
 
 /* Initialize the incore inode. */
 void xfs_setup_inode(struct xfs_inode *ip);
+
+/* Create an incore inode for a newly allocated inode. */
+int xfs_inode_ialloc_iget(struct xfs_trans *tp, xfs_ino_t ino,
+		struct xfs_inode **ipp);
 
 #endif /* __XFS_INODE_UTIL_H__ */

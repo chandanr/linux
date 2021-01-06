@@ -448,9 +448,6 @@ int		xfs_iflush_cluster(struct xfs_buf *);
 void		xfs_lock_two_inodes(struct xfs_inode *ip0, uint ip0_mode,
 				struct xfs_inode *ip1, uint ip1_mode);
 
-int xfs_dir_ialloc(struct xfs_trans **tpp, const struct xfs_ialloc_args *args,
-		   struct xfs_inode **ipp);
-
 static inline int
 xfs_itruncate_extents(
 	struct xfs_trans	**tpp,

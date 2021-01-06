@@ -340,3 +340,69 @@ xfs_inode_init(
 	/* now that we have an i_mode we can setup the inode structure */
 	xfs_setup_inode(ip);
 }
+
+/*
+ * Allocates a new inode from disk and return a pointer to the incore copy. This
+ * routine will internally commit the current transaction and allocate a new one
+ * if we needed to allocate more on-disk free inodes to perform the requested
+ * operation.
+ *
+ * If we are allocating quota inodes, we do not have a parent inode to attach to
+ * or associate with (i.e. dp == NULL) because they are not linked into the
+ * directory structure - they are attached directly to the superblock - and so
+ * have no parent.
+ */
+int
+xfs_dir_ialloc(
+	struct xfs_trans	**tpp,
+	const struct xfs_ialloc_args *args,
+	struct xfs_inode	**ipp)
+{
+	struct xfs_mount	*mp = (*tpp)->t_mountp;
+	struct xfs_inode	*dp = args->pip;
+	struct xfs_buf		*agibp;
+	xfs_ino_t		parent_ino = dp ? dp->i_ino : 0;
+	xfs_ino_t		ino;
+	int			error;
+
+	ASSERT((*tpp)->t_flags & XFS_TRANS_PERM_LOG_RES);
+
+	/*
+	 * Call the space management code to pick the on-disk inode to be
+	 * allocated.
+	 */
+	error = xfs_dialloc_select_ag(tpp, parent_ino, args->mode, &agibp);
+	if (error)
+		return error;
+
+	if (!agibp)
+		return -ENOSPC;
+
+	/* Allocate an inode from the selected AG */
+	error = xfs_dialloc_ag(*tpp, agibp, parent_ino, &ino);
+	if (error)
+		return error;
+	ASSERT(ino != NULLFSINO);
+
+	/*
+	 * Protect against obviously corrupt allocation btree records. Later
+	 * xfs_iget checks will catch re-allocation of other active in-memory
+	 * and on-disk inodes. If we don't catch reallocating the parent inode
+	 * here we will deadlock in xfs_iget() so we have to do these checks
+	 * first.
+	 */
+	if ((dp && ino == dp->i_ino) || !xfs_verify_dir_ino(mp, ino)) {
+		xfs_alert(mp, "Allocated a known in-use inode 0x%llx!", ino);
+		xfs_agno_mark_sick(mp, XFS_INO_TO_AGNO(mp, ino),
+				XFS_SICK_AG_INOBT);
+		return -EFSCORRUPTED;
+	}
+
+	error = xfs_inode_ialloc_iget(*tpp, ino, ipp);
+	if (error)
+		return error;
+
+	ASSERT(*ipp != NULL);
+	xfs_inode_init(*tpp, args, *ipp);
+	return 0;
+}
