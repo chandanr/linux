@@ -81,6 +81,14 @@ struct xfs_scrub {
 	/* Kernel memory buffer used by scrubbers; freed at teardown. */
 	void				*buf;
 
+	/*
+	 * Clean up resources owned by whatever is in the buffer.  Cleanup can
+	 * be deferred with this hook as a means for scrub functions to pass
+	 * data to repair functions.  This function must not free the buffer
+	 * itself.
+	 */
+	void				(*buf_cleanup)(void *buf);
+
 	/* xfile used by the scrubbers; freed at teardown. */
 	struct xfile			*xfile;
 
@@ -145,9 +153,15 @@ xchk_rtsummary(struct xfs_scrub *sc)
 #endif
 #ifdef CONFIG_XFS_QUOTA
 int xchk_quota(struct xfs_scrub *sc);
+int xchk_quotacheck(struct xfs_scrub *sc);
 #else
 static inline int
 xchk_quota(struct xfs_scrub *sc)
+{
+	return -ENOENT;
+}
+static inline int
+xchk_quotacheck(struct xfs_scrub *sc)
 {
 	return -ENOENT;
 }
