@@ -211,6 +211,44 @@ xrep_parents_walk(
  * capable of rebuilding a directory with the proper parent inode.
  */
 
+/* Check the dentry cache to see if it thinks it knows of a parent. */
+STATIC xfs_ino_t
+xrep_parent_check_dcache(
+	struct xfs_inode	*dp)
+{
+	struct inode		*pip = NULL;
+	struct dentry		*dentry, *parent;
+	xfs_ino_t		ret = NULLFSINO;
+
+	ASSERT(S_ISDIR(VFS_I(dp)->i_mode));
+
+	dentry = d_find_alias(VFS_I(dp));
+	if (!dentry)
+		goto out;
+
+	parent = dget_parent(dentry);
+	if (!parent)
+		goto out_dput;
+
+	if (parent->d_sb != dp->i_mount->m_super) {
+		dput(parent);
+		goto out_dput;
+	}
+
+	pip = igrab(d_inode(parent));
+	dput(parent);
+
+	if (S_ISDIR(pip->i_mode))
+		ret = XFS_I(pip)->i_ino;
+
+	xfs_irele(XFS_I(pip));
+
+out_dput:
+	dput(dentry);
+out:
+	return ret;
+}
+
 struct xrep_dir_parent_pick_info {
 	struct xfs_scrub	*sc;
 	xfs_ino_t		found_parent;
@@ -286,6 +324,7 @@ xrep_dir_parent_find(
 		.sc		= sc,
 		.found_parent	= NULLFSINO,
 	};
+	xfs_ino_t		suggestion;
 	bool			is_parent = false;
 	int			error;
 
@@ -318,6 +357,18 @@ xrep_dir_parent_find(
 		error = xrep_dir_parent_check(sc, *parent_ino, &is_parent);
 		if (error || is_parent)
 			return error;
+	}
+
+	/* Maybe the dcache will supply us with a parent? */
+	suggestion = xrep_parent_check_dcache(sc->ip);
+	if (!xfs_verify_dir_ino(sc->mp, suggestion)) {
+		error = xrep_dir_parent_check(sc, suggestion, &is_parent);
+		if (error)
+			return error;
+		if (is_parent) {
+			*parent_ino = suggestion;
+			return 0;
+		}
 	}
 
 	/* Otherwise, scan the entire filesystem to find a parent. */
