@@ -662,7 +662,7 @@ xchk_bmap_check_rmaps(
 		return 0;
 
 	/* Don't support realtime rmap checks yet. */
-	if (XFS_IS_REALTIME_INODE(sc->ip) && whichfork == XFS_DATA_FORK)
+	if (xfs_ifork_is_realtime(sc->ip, whichfork))
 		return 0;
 
 	ASSERT(XFS_IFORK_PTR(sc->ip, whichfork) != NULL);
@@ -718,7 +718,7 @@ xchk_bmap(
 	if (!ifp)
 		goto out;
 
-	info.is_rt = whichfork == XFS_DATA_FORK && XFS_IS_REALTIME_INODE(ip);
+	info.is_rt = xfs_ifork_is_realtime(ip, whichfork);
 	info.whichfork = whichfork;
 	info.is_shared = whichfork == XFS_DATA_FORK && xfs_is_reflink_inode(ip);
 	info.sc = sc;
