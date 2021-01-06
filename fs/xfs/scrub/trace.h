@@ -12,6 +12,8 @@
 #include <linux/tracepoint.h>
 #include "xfs_bit.h"
 
+struct xfile;
+
 /*
  * ftrace's __print_symbolic requires that all enum values be wrapped in the
  * TRACE_DEFINE_ENUM macro so that the enum value can be encoded in the ftrace
@@ -669,6 +671,90 @@ TRACE_EVENT(xchk_fscounters_frextents_within_range,
 		  __entry->expected,
 		  __entry->curr_value)
 )
+
+TRACE_EVENT(xfile_create,
+	TP_PROTO(struct xfile *xf),
+	TP_ARGS(xf),
+	TP_STRUCT__entry(
+		__field(unsigned long, ino)
+		__array(char, pathname, 256)
+	),
+	TP_fast_assign(
+		char		pathname[257];
+		char		*path;
+
+		__entry->ino = file_inode(xf->file)->i_ino;
+		memset(pathname, 0, sizeof(pathname));
+		path = file_path(xf->file, pathname, sizeof(pathname) - 1);
+		if (IS_ERR(path))
+			path = "(unknown)";
+		strncpy(__entry->pathname, path, sizeof(__entry->pathname));
+	),
+	TP_printk("ino %lu path %s",
+		  __entry->ino,
+		  __entry->pathname)
+);
+
+DECLARE_EVENT_CLASS(xfile_class,
+	TP_PROTO(struct xfile *xf, loff_t offset, long long count),
+	TP_ARGS(xf, offset, count),
+	TP_STRUCT__entry(
+		__field(unsigned long, ino)
+		__field(long long, bytes)
+		__field(loff_t, offset)
+		__field(long long, count)
+	),
+	TP_fast_assign(
+		struct kstat	statbuf;
+		int		ret;
+
+		ret = xfile_statx(xf, &statbuf);
+		if (!ret)
+			__entry->bytes = statbuf.blocks * 512;
+		else
+			__entry->bytes = -1;
+		__entry->ino = file_inode(xf->file)->i_ino;
+		__entry->offset = offset;
+		__entry->count = count;
+	),
+	TP_printk("ino %lu mem_usage %lld offset %lld count %lld",
+		  __entry->ino,
+		  __entry->bytes,
+		  __entry->offset,
+		  __entry->count)
+);
+#define DEFINE_XFILE_EVENT(name) \
+DEFINE_EVENT(xfile_class, name, \
+	TP_PROTO(struct xfile *xf, loff_t offset, long long count), \
+	TP_ARGS(xf, offset, count))
+DEFINE_XFILE_EVENT(xfile_destroy);
+DEFINE_XFILE_EVENT(xfile_discard);
+DEFINE_XFILE_EVENT(xfile_pread);
+DEFINE_XFILE_EVENT(xfile_pwrite);
+DEFINE_XFILE_EVENT(xfile_seek_data);
+
+TRACE_EVENT(xfbma_sort_stats,
+	TP_PROTO(uint64_t nr, unsigned int max_stack_depth,
+		 unsigned int max_stack_used, int error),
+	TP_ARGS(nr, max_stack_depth, max_stack_used, error),
+	TP_STRUCT__entry(
+		__field(uint64_t, nr)
+		__field(unsigned int, max_stack_depth)
+		__field(unsigned int, max_stack_used)
+		__field(int, error)
+	),
+	TP_fast_assign(
+		__entry->nr = nr;
+		__entry->max_stack_depth = max_stack_depth;
+		__entry->max_stack_used = max_stack_used;
+		__entry->error = error;
+	),
+	TP_printk("nr %llu max_depth %u max_used %u error %d",
+		  __entry->nr,
+		  __entry->max_stack_depth,
+		  __entry->max_stack_used,
+		  __entry->error)
+);
 
 /* repair tracepoints */
 #if IS_ENABLED(CONFIG_XFS_ONLINE_REPAIR)
