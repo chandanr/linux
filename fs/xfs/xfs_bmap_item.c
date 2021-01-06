@@ -452,6 +452,9 @@ xfs_bui_validate(
 	if (!xfs_verify_fileext(mp, bmap->me_startoff, bmap->me_len))
 		return false;
 
+	if (bmap->me_flags & XFS_BMAP_EXTENT_REALTIME)
+		return xfs_verify_rtext(mp, bmap->me_startblock, bmap->me_len);
+
 	return xfs_verify_fsbext(mp, bmap->me_startblock, bmap->me_len);
 }
 
@@ -512,6 +515,12 @@ xfs_bui_item_recover(
 	budp = xfs_trans_get_bud(tp, buip);
 	xfs_ilock(ip, XFS_ILOCK_EXCL);
 	xfs_trans_ijoin(tp, ip, 0);
+
+	if (!!(bmap->me_flags & XFS_BMAP_EXTENT_REALTIME) !=
+	    xfs_ifork_is_realtime(ip, whichfork)) {
+		error = -EFSCORRUPTED;
+		goto err_cancel;
+	}
 
 	if (bui_type == XFS_BMAP_MAP)
 		iext_delta = XFS_IEXT_ADD_NOSPLIT_CNT;
