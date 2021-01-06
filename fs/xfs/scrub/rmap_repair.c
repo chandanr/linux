@@ -579,7 +579,8 @@ xrep_rmap_scan_inode(
 	int				error;
 
 	/* Grab inode and lock it so we can scan it. */
-	error = xfs_iget(mp, rr->sc->tp, ino, XFS_IGET_DONTCACHE, 0, &ip);
+	error = xfs_iget(mp, rr->sc->tp, ino,
+			XFS_IGET_DONTCACHE | XFS_IGET_UNLINKED, 0, &ip);
 	if (error)
 		return error;
 

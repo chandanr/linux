@@ -1014,19 +1014,22 @@ xfs_iget_cache_hit(
 	if (ip->i_flags & (XFS_INEW | XFS_IRECLAIM | XFS_INACTIVATING))
 		goto out_skip;
 
-	/* Unlinked inodes cannot be re-grabbed. */
-	if (VFS_I(ip)->i_nlink == 0 && (ip->i_flags & XFS_NEED_INACTIVE)) {
-		error = -ENOENT;
-		goto out_error;
-	}
+	if (!(flags & XFS_IGET_UNLINKED)) {
+		/* Unlinked inodes cannot be re-grabbed. */
+		if (VFS_I(ip)->i_nlink == 0 &&
+		    (ip->i_flags & XFS_NEED_INACTIVE)) {
+			error = -ENOENT;
+			goto out_error;
+		}
 
-	/*
-	 * Check the inode free state is valid. This also detects lookup
-	 * racing with unlinks.
-	 */
-	error = xfs_iget_check_free_state(ip, flags);
-	if (error)
-		goto out_error;
+		/*
+		 * Check the inode free state is valid. This also detects
+		 * lookup racing with unlinks.
+		 */
+		error = xfs_iget_check_free_state(ip, flags);
+		if (error)
+			goto out_error;
+	}
 
 	/* Skip inodes that have no vfs state. */
 	if ((flags & XFS_IGET_INCORE) &&
