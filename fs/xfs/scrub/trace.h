@@ -1357,6 +1357,7 @@ DEFINE_EVENT(xrep_dquot_class, name, \
 	TP_ARGS(mp, type, id))
 DEFINE_XREP_DQUOT_EVENT(xrep_dquot_item);
 DEFINE_XREP_DQUOT_EVENT(xrep_disk_dquot);
+DEFINE_XREP_DQUOT_EVENT(xrep_quotacheck_dquot);
 
 #endif /* IS_ENABLED(CONFIG_XFS_ONLINE_REPAIR) */
 
