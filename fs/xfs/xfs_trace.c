@@ -31,6 +31,7 @@
 #include "xfs_btree_staging.h"
 #include "xfs_icache.h"
 #include "xfs_swapext.h"
+#include "xfs_xchgrange.h"
 
 /*
  * We include this last to have the helpers above available for the trace

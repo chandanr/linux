@@ -3599,9 +3599,133 @@ DEFINE_INODE_IREC_EVENT(xfs_reflink_cancel_cow);
 DEFINE_INODE_IREC_EVENT(xfs_swap_extent_rmap_remap);
 DEFINE_INODE_IREC_EVENT(xfs_swap_extent_rmap_remap_piece);
 DEFINE_INODE_ERROR_EVENT(xfs_swap_extent_rmap_error);
+
+/* swapext tracepoints */
+DEFINE_INODE_ERROR_EVENT(xfs_file_xchg_range_error);
 DEFINE_INODE_IREC_EVENT(xfs_swapext_extent1);
 DEFINE_INODE_IREC_EVENT(xfs_swapext_extent2);
 DEFINE_ITRUNC_EVENT(xfs_swapext_update_inode_size);
+
+#define FIEXCHANGE_FLAGS_STRS \
+	{ FILE_XCHG_RANGE_NONATOMIC,		"NONATOMIC" }, \
+	{ FILE_XCHG_RANGE_FILE2_FRESH,		"F2_FRESH" }, \
+	{ FILE_XCHG_RANGE_FULL_FILES,		"FULL" }, \
+	{ FILE_XCHG_RANGE_TO_EOF,		"TO_EOF" }, \
+	{ FILE_XCHG_RANGE_FSYNC	,		"FSYNC" }, \
+	{ FILE_XCHG_RANGE_DRY_RUN,		"DRY_RUN" }, \
+	{ FILE_XCHG_RANGE_SKIP_FILE1_HOLES,	"SKIP_F1_HOLES" }
+
+#define XCHG_RANGE_FLAGS_STRS \
+	{ XFS_XCHG_RANGE_UPD_CMTIME1,		"UPD_CMTIME1" }, \
+	{ XFS_XCHG_RANGE_UPD_CMTIME2,		"UPD_CMTIME2" }
+
+/* file exchange-range tracepoint class */
+DECLARE_EVENT_CLASS(xfs_xchg_range_class,
+	TP_PROTO(struct xfs_inode *ip1, const struct file_xchg_range *fxr,
+		 struct xfs_inode *ip2, unsigned int xchg_flags),
+	TP_ARGS(ip1, fxr, ip2, xchg_flags),
+	TP_STRUCT__entry(
+		__field(dev_t, dev)
+		__field(xfs_ino_t, ip1_ino)
+		__field(loff_t, ip1_isize)
+		__field(loff_t, ip1_disize)
+		__field(xfs_ino_t, ip2_ino)
+		__field(loff_t, ip2_isize)
+		__field(loff_t, ip2_disize)
+
+		__field(loff_t, file1_offset)
+		__field(loff_t, file2_offset)
+		__field(unsigned long long, length)
+		__field(unsigned long long, vflags)
+		__field(unsigned int, xflags)
+	),
+	TP_fast_assign(
+		__entry->dev = VFS_I(ip1)->i_sb->s_dev;
+		__entry->ip1_ino = ip1->i_ino;
+		__entry->ip1_isize = VFS_I(ip1)->i_size;
+		__entry->ip1_disize = ip1->i_disk_size;
+		__entry->ip2_ino = ip2->i_ino;
+		__entry->ip2_isize = VFS_I(ip2)->i_size;
+		__entry->ip2_disize = ip2->i_disk_size;
+
+		__entry->file1_offset = fxr->file1_offset;
+		__entry->file2_offset = fxr->file2_offset;
+		__entry->length = fxr->length;
+		__entry->vflags = fxr->flags;
+		__entry->xflags = xchg_flags;
+	),
+	TP_printk("dev %d:%d vfs_flags %s xchg_flags %s length 0x%llx "
+		  "ino 0x%llx isize 0x%llx disize 0x%llx offset 0x%llx -> "
+		  "ino 0x%llx isize 0x%llx disize 0x%llx offset 0x%llx",
+		  MAJOR(__entry->dev), MINOR(__entry->dev),
+		   __print_flags(__entry->vflags, "|", FIEXCHANGE_FLAGS_STRS),
+		   __print_flags(__entry->xflags, "|", XCHG_RANGE_FLAGS_STRS),
+		  __entry->length,
+		  __entry->ip1_ino,
+		  __entry->ip1_isize,
+		  __entry->ip1_disize,
+		  __entry->file1_offset,
+		  __entry->ip2_ino,
+		  __entry->ip2_isize,
+		  __entry->ip2_disize,
+		  __entry->file2_offset)
+)
+
+#define DEFINE_XCHG_RANGE_EVENT(name)	\
+DEFINE_EVENT(xfs_xchg_range_class, name,	\
+	TP_PROTO(struct xfs_inode *ip1, const struct file_xchg_range *fxr, \
+		 struct xfs_inode *ip2, unsigned int xchg_flags), \
+	TP_ARGS(ip1, fxr, ip2, xchg_flags))
+DEFINE_XCHG_RANGE_EVENT(xfs_xchg_range_prep);
+DEFINE_XCHG_RANGE_EVENT(xfs_xchg_range_flush);
+DEFINE_XCHG_RANGE_EVENT(xfs_xchg_range);
+
+TRACE_EVENT(xfs_xchg_range_freshness,
+	TP_PROTO(struct xfs_inode *ip2, const struct file_xchg_range *fxr),
+	TP_ARGS(ip2, fxr),
+	TP_STRUCT__entry(
+		__field(dev_t, dev)
+		__field(xfs_ino_t, ip2_ino)
+		__field(long long, ip2_mtime)
+		__field(long long, ip2_ctime)
+		__field(int, ip2_mtime_nsec)
+		__field(int, ip2_ctime_nsec)
+
+		__field(xfs_ino_t, file2_ino)
+		__field(long long, file2_mtime)
+		__field(long long, file2_ctime)
+		__field(int, file2_mtime_nsec)
+		__field(int, file2_ctime_nsec)
+	),
+	TP_fast_assign(
+		__entry->dev = VFS_I(ip2)->i_sb->s_dev;
+		__entry->ip2_ino = ip2->i_ino;
+		__entry->ip2_mtime = VFS_I(ip2)->i_mtime.tv_sec;
+		__entry->ip2_ctime = VFS_I(ip2)->i_ctime.tv_sec;
+		__entry->ip2_mtime_nsec = VFS_I(ip2)->i_mtime.tv_nsec;
+		__entry->ip2_ctime_nsec = VFS_I(ip2)->i_ctime.tv_nsec;
+
+		__entry->file2_ino = fxr->file2_ino;
+		__entry->file2_mtime = fxr->file2_mtime;
+		__entry->file2_ctime = fxr->file2_ctime;
+		__entry->file2_mtime_nsec = fxr->file2_mtime_nsec;
+		__entry->file2_ctime_nsec = fxr->file2_ctime_nsec;
+	),
+	TP_printk("dev %d:%d "
+		  "ino 0x%llx mtime %lld:%d ctime %lld:%d -> "
+		  "file 0x%llx mtime %lld:%d ctime %lld:%d",
+		  MAJOR(__entry->dev), MINOR(__entry->dev),
+		  __entry->ip2_ino,
+		  __entry->ip2_mtime,
+		  __entry->ip2_mtime_nsec,
+		  __entry->ip2_ctime,
+		  __entry->ip2_ctime_nsec,
+		  __entry->file2_ino,
+		  __entry->file2_mtime,
+		  __entry->file2_mtime_nsec,
+		  __entry->file2_ctime,
+		  __entry->file2_ctime_nsec)
+);
 
 /* fsmap traces */
 DECLARE_EVENT_CLASS(xfs_fsmap_class,
