@@ -329,7 +329,7 @@ xrep_bmap_iroot_size(
 {
 	ASSERT(level > 0);
 
-	return XFS_BMAP_BROOT_SPACE_CALC(cur->bc_mp, nr_this_level);
+	return xfs_bmap_broot_space_calc(cur->bc_mp, nr_this_level);
 }
 
 /* Update the inode counters. */
@@ -473,7 +473,7 @@ xrep_bmap_build_new_fork(
 	 * so that we can roll the transaction while holding the inode locked.
 	 */
 	ifake->if_fork->if_nextents = xfbma_length(rb->bmap_records);
-	if (XFS_BMDR_SPACE_CALC(ifake->if_fork->if_nextents) <=
+	if (xfs_bmdr_space_calc(ifake->if_fork->if_nextents) <=
 	    XFS_IFORK_SIZE(sc->ip, rb->whichfork)) {
 		ifake->if_fork->if_format = XFS_DINODE_FMT_EXTENTS;
 		error = xrep_bmap_extents_load(rb, bmap_cur);
