@@ -541,11 +541,11 @@ xchk_agf(
 		xchk_block_set_corrupt(sc, sc->sa.agf_bp);
 
 	level = be32_to_cpu(agf->agf_levels[XFS_BTNUM_BNO]);
-	if (level <= 0 || level > XFS_BTREE_MAXLEVELS)
+	if (level <= 0 || level > mp->m_ag_maxlevels)
 		xchk_block_set_corrupt(sc, sc->sa.agf_bp);
 
 	level = be32_to_cpu(agf->agf_levels[XFS_BTNUM_CNT]);
-	if (level <= 0 || level > XFS_BTREE_MAXLEVELS)
+	if (level <= 0 || level > mp->m_ag_maxlevels)
 		xchk_block_set_corrupt(sc, sc->sa.agf_bp);
 
 	if (xfs_sb_version_hasrmapbt(&mp->m_sb)) {
@@ -554,7 +554,7 @@ xchk_agf(
 			xchk_block_set_corrupt(sc, sc->sa.agf_bp);
 
 		level = be32_to_cpu(agf->agf_levels[XFS_BTNUM_RMAP]);
-		if (level <= 0 || level > XFS_BTREE_MAXLEVELS)
+		if (level <= 0 || level > mp->m_rmap_maxlevels)
 			xchk_block_set_corrupt(sc, sc->sa.agf_bp);
 	}
 
@@ -564,7 +564,7 @@ xchk_agf(
 			xchk_block_set_corrupt(sc, sc->sa.agf_bp);
 
 		level = be32_to_cpu(agf->agf_refcount_level);
-		if (level <= 0 || level > XFS_BTREE_MAXLEVELS)
+		if (level <= 0 || level > mp->m_refc_maxlevels)
 			xchk_block_set_corrupt(sc, sc->sa.agf_bp);
 	}
 
@@ -838,6 +838,7 @@ xchk_agi(
 	struct xfs_mount	*mp = sc->mp;
 	struct xfs_agi		*agi;
 	struct xfs_perag	*pag;
+	struct xfs_ino_geometry	*igeo = M_IGEO(sc->mp);
 	xfs_agnumber_t		agno = sc->sm->sm_agno;
 	xfs_agblock_t		agbno;
 	xfs_agblock_t		eoag;
@@ -867,7 +868,7 @@ xchk_agi(
 		xchk_block_set_corrupt(sc, sc->sa.agi_bp);
 
 	level = be32_to_cpu(agi->agi_level);
-	if (level <= 0 || level > XFS_BTREE_MAXLEVELS)
+	if (level <= 0 || level > igeo->inobt_maxlevels)
 		xchk_block_set_corrupt(sc, sc->sa.agi_bp);
 
 	if (xfs_sb_version_hasfinobt(&mp->m_sb)) {
@@ -876,7 +877,7 @@ xchk_agi(
 			xchk_block_set_corrupt(sc, sc->sa.agi_bp);
 
 		level = be32_to_cpu(agi->agi_free_level);
-		if (level <= 0 || level > XFS_BTREE_MAXLEVELS)
+		if (level <= 0 || level > igeo->inobt_maxlevels)
 			xchk_block_set_corrupt(sc, sc->sa.agi_bp);
 	}
 
