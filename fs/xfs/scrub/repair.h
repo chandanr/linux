@@ -70,6 +70,8 @@ struct xrep_newbt_resv {
 	/* Link to list of extents that we've reserved. */
 	struct list_head	list;
 
+	struct xfs_log_item	*efi;
+
 	/* FSB of the block we reserved. */
 	xfs_fsblock_t		fsbno;
 
@@ -116,6 +118,7 @@ int xrep_newbt_claim_block(struct xfs_btree_cur *cur, struct xrep_newbt *xnr,
 		union xfs_btree_ptr *ptr);
 void xrep_bload_estimate_slack(struct xfs_scrub *sc,
 		struct xfs_btree_bload *bload);
+int xrep_newbt_relog_efis(struct xrep_newbt *xnr);
 
 #else
 

@@ -326,8 +326,6 @@ xfs_trans_get_efd(
 {
 	struct xfs_efd_log_item		*efdp;
 
-	ASSERT(nextents > 0);
-
 	if (nextents > XFS_EFD_MAX_FAST_EXTENTS) {
 		efdp = kmem_zalloc(sizeof(struct xfs_efd_log_item) +
 				(nextents - 1) * sizeof(struct xfs_extent),
