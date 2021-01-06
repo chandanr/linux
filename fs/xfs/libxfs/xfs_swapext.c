@@ -280,6 +280,115 @@ xfs_swapext_has_more_work(
 		(sxi->sxi_flags & XFS_SWAP_EXTENT_POST_PROCESSING);
 }
 
+/*
+ * There may be partially written rt extents lurking in the ranges to be
+ * swapped.  According to the rules for realtime files with big rt extents, we
+ * must guarantee that an outside observer (an IO thread, realistically) never
+ * can see multiple physical rt extents mapped to the same logical file rt
+ * extent.  The deferred bmap log intent items that we use under the hood
+ * operate on single block mappings and not rt extents, which means we must
+ * have a strategy to ensure that log recovery after a failure won't stop in
+ * the middle of an rt extent.
+ *
+ * The preferred strategy is to use deferred extent swap log intent items to
+ * track the status of the overall swap operation so that we can complete the
+ * work during crash recovery.  If that isn't possible, we fall back to
+ * requiring the selected mappings in both forks to be aligned to rt extent
+ * boundaries.  As an aside, the old fork swap routine didn't have this
+ * requirement, but at an extreme cost in flexibilty (full files only, no attr
+ * forks, and no support if rmapbt is enabled).
+ */
+bool
+xfs_swapext_need_rt_conversion(
+	struct xfs_inode		*ip)
+{
+	struct xfs_mount		*mp = ip->i_mount;
+
+	/* We're using the extent swap intent items */
+	if (xfs_sb_version_hasatomicswap(&mp->m_sb))
+		return false;
+
+	/* The only supported operation is full fork swaps */
+	if (!xfs_sb_version_canatomicswap(&mp->m_sb))
+		return false;
+
+	/* Conversion is only needed for realtime files with big rt extents */
+	return xfs_inode_has_bigrtextents(ip);
+}
+
+#ifdef DEBUG
+static inline int
+xfs_swapext_check_rt_extents(
+	struct xfs_mount		*mp,
+	const struct xfs_swapext_req	*req)
+{
+	struct xfs_bmbt_irec		irec1, irec2;
+	xfs_fileoff_t			startoff1 = req->startoff1;
+	xfs_fileoff_t			startoff2 = req->startoff2;
+	xfs_filblks_t			blockcount = req->blockcount;
+	uint32_t			mod;
+	int				nimaps;
+	int				error;
+
+	if (req->whichfork == XFS_ATTR_FORK ||
+	    !xfs_swapext_need_rt_conversion(req->ip2))
+		return 0;
+
+	while (blockcount > 0) {
+		/* Read extent from the first file */
+		nimaps = 1;
+		error = xfs_bmapi_read(req->ip1, startoff1, blockcount,
+				&irec1, &nimaps, 0);
+		if (error)
+			return error;
+		ASSERT(nimaps == 1);
+
+		/* Read extent from the second file */
+		nimaps = 1;
+		error = xfs_bmapi_read(req->ip2, startoff2,
+				irec1.br_blockcount, &irec2, &nimaps,
+				0);
+		if (error)
+			return error;
+		ASSERT(nimaps == 1);
+
+		/*
+		 * We can only swap as many blocks as the smaller of the two
+		 * extent maps.
+		 */
+		irec1.br_blockcount = min(irec1.br_blockcount,
+					  irec2.br_blockcount);
+
+		/* Both mappings must be aligned to the realtime extent size. */
+		div_u64_rem(irec1.br_startoff, mp->m_sb.sb_rextsize, &mod);
+		if (mod) {
+			ASSERT(mod == 0);
+			return -EINVAL;
+		}
+
+		div_u64_rem(irec2.br_startoff, mp->m_sb.sb_rextsize, &mod);
+		if (mod) {
+			ASSERT(mod == 0);
+			return -EINVAL;
+		}
+
+		div_u64_rem(irec1.br_blockcount, mp->m_sb.sb_rextsize, &mod);
+		if (mod) {
+			ASSERT(mod == 0);
+			return -EINVAL;
+		}
+
+		startoff1 += irec1.br_blockcount;
+		startoff2 += irec1.br_blockcount;
+		blockcount -= irec1.br_blockcount;
+	}
+
+	return 0;
+}
+#else
+# define xfs_swapext_check_rt_extents(mp, req)		(0)
+#endif
+
 /* Check all extents to make sure we can actually swap them. */
 int
 xfs_swapext_check_extents(
@@ -299,12 +408,7 @@ xfs_swapext_check_extents(
 	    ifp2->if_format == XFS_DINODE_FMT_LOCAL)
 		return -EINVAL;
 
-	/* We don't support realtime data forks yet. */
-	if (!XFS_IS_REALTIME_INODE(req->ip1))
-		return 0;
-	if (req->whichfork == XFS_ATTR_FORK)
-		return 0;
-	return -EINVAL;
+	return xfs_swapext_check_rt_extents(mp, req);
 }
 
 #ifdef CONFIG_XFS_QUOTA

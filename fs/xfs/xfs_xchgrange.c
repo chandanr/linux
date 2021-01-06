@@ -28,6 +28,7 @@
 #include "xfs_sb.h"
 #include "xfs_icache.h"
 #include "xfs_log.h"
+#include "xfs_rtalloc.h"
 
 /* Lock (and optionally join) two inodes for a file range exchange. */
 void
@@ -414,6 +415,19 @@ xfs_xchg_range_prep(
 			return error;
 	}
 
+	/* Convert unwritten sub-extent mappings if required. */
+	if (xfs_swapext_need_rt_conversion(ip2)) {
+		error = xfs_rtfile_convert_unwritten(ip2, fxr->file2_offset,
+				fxr->length);
+		if (error)
+			return error;
+
+		error = xfs_rtfile_convert_unwritten(ip1, fxr->file1_offset,
+				fxr->length);
+		if (error)
+			return error;
+	}
+
 	return 0;
 }
 
@@ -621,6 +635,15 @@ xfs_xchg_range(
 		req.flags |= XFS_SWAPEXT_SET_SIZES;
 	if (fxr->flags & FILE_XCHG_RANGE_SKIP_FILE1_HOLES)
 		req.flags |= XFS_SWAPEXT_SKIP_FILE1_HOLES;
+
+	/*
+	 * Round the request length up to the nearest fundamental unit of
+	 * allocation.  The prep function already checked that the request
+	 * offsets and length in @fxr are safe to round up.
+	 */
+	if (XFS_IS_REALTIME_INODE(ip2))
+		req.blockcount = roundup_64(req.blockcount,
+					    mp->m_sb.sb_rextsize);
 
 	error = xfs_xchg_range_estimate(&req, &res);
 	if (error)

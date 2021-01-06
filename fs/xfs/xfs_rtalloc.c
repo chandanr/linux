@@ -20,6 +20,7 @@
 #include "xfs_rtalloc.h"
 #include "xfs_sb.h"
 #include "xfs_health.h"
+#include "xfs_trace.h"
 
 /*
  * Read and return the summary information for a given extent size,
@@ -1343,4 +1344,139 @@ xfs_rtpick_extent(
 	xfs_trans_log_inode(tp, mp->m_rbmip, XFS_ILOG_CORE);
 	*pick = b;
 	return 0;
+}
+
+/*
+ * Decide if this is an unwritten extent that isn't aligned to a rt extent
+ * boundary.  If it is, shorten the mapping so that we're ready to convert
+ * everything up to the next rt extent to a zeroed written extent.  If not,
+ * return false.
+ */
+static inline bool
+xfs_rtfile_want_conversion(
+	struct xfs_mount	*mp,
+	struct xfs_bmbt_irec	*irec)
+{
+	xfs_fileoff_t		rext_next;
+	uint32_t		modoff, modcnt;
+
+	if (irec->br_state != XFS_EXT_UNWRITTEN)
+		return false;
+
+	div_u64_rem(irec->br_startoff, mp->m_sb.sb_rextsize, &modoff);
+	if (modoff == 0) {
+		uint64_t	rexts = div_u64_rem(irec->br_blockcount,
+						mp->m_sb.sb_rextsize, &modcnt);
+
+		if (rexts > 0) {
+			/*
+			 * Unwritten mapping starts at an rt extent boundary
+			 * and is longer than one rt extent.  Round the length
+			 * down to the nearest extent but don't select it for
+			 * conversion.
+			 */
+			irec->br_blockcount -= modcnt;
+			modcnt = 0;
+		}
+
+		/* Unwritten mapping is perfectly aligned, do not convert. */
+		if (modcnt == 0)
+			return false;
+	}
+
+	/*
+	 * Unaligned and unwritten; trim to the current rt extent and select it
+	 * for conversion.
+	 */
+	rext_next = (irec->br_startoff - modoff) + mp->m_sb.sb_rextsize;
+	xfs_trim_extent(irec, irec->br_startoff, rext_next - irec->br_startoff);
+	return true;
+}
+
+/*
+ * For all realtime extents backing the given range of a file, search for
+ * unwritten mappings that are do not cover a full rt extent and convert them
+ * to zeroed written mappings.  The goal is to end up with one mapping per rt
+ * extent so that we can perform a remapping operation.  Callers must ensure
+ * that there are no dirty pages in the given range.
+ */
+int
+xfs_rtfile_convert_unwritten(
+	struct xfs_inode	*ip,
+	loff_t			pos,
+	uint64_t		len)
+{
+	struct xfs_bmbt_irec	irec;
+	struct xfs_trans	*tp;
+	struct xfs_mount	*mp = ip->i_mount;
+	xfs_fileoff_t		off = XFS_B_TO_FSBT(mp, pos);
+	xfs_fileoff_t		endoff;
+	unsigned int		resblks;
+	int			ret;
+
+	if (mp->m_sb.sb_rextsize == 1)
+		return 0;
+
+	off = rounddown_64(XFS_B_TO_FSBT(mp, pos), mp->m_sb.sb_rextsize);
+	endoff = roundup_64(XFS_B_TO_FSB(mp, pos + len), mp->m_sb.sb_rextsize);
+
+	trace_xfs_rtfile_convert_unwritten(ip, pos, len);
+
+	while (off < endoff) {
+		int		nmap = 1;
+
+		if (fatal_signal_pending(current))
+			return -EINTR;
+
+		resblks = XFS_DIOSTRAT_SPACE_RES(mp, 1);
+		ret = xfs_trans_alloc(mp, &M_RES(mp)->tr_write, resblks, 0, 0,
+				&tp);
+		if (ret)
+			return ret;
+
+		xfs_ilock(ip, XFS_ILOCK_EXCL);
+		xfs_trans_ijoin(tp, ip, XFS_ILOCK_EXCL);
+
+		/*
+		 * Read the mapping.  If we find an unwritten extent that isn't
+		 * aligned to an rt extent boundary...
+		 */
+		ret = xfs_bmapi_read(ip, off, endoff - off, &irec, &nmap, 0);
+		if (ret)
+			goto err;
+		ASSERT(nmap == 1);
+		ASSERT(irec.br_startoff == off);
+		if (!xfs_rtfile_want_conversion(mp, &irec)) {
+			xfs_trans_cancel(tp);
+			off += irec.br_blockcount;
+			continue;
+		}
+
+		/*
+		 * ...make sure this partially unwritten rt extent gets
+		 * converted to a zeroed written extent that we can remap.
+		 */
+		nmap = 1;
+		ret = xfs_bmapi_write(tp, ip, off, irec.br_blockcount,
+				XFS_BMAPI_CONVERT | XFS_BMAPI_ZERO, 0, &irec,
+				&nmap);
+		if (ret)
+			goto err;
+		ASSERT(nmap == 1);
+		if (irec.br_state != XFS_EXT_NORM) {
+			ASSERT(0);
+			ret = -EIO;
+			goto err;
+		}
+		ret = xfs_trans_commit(tp);
+		if (ret)
+			return ret;
+
+		off += irec.br_blockcount;
+	}
+
+	return 0;
+err:
+	xfs_trans_cancel(tp);
+	return ret;
 }
