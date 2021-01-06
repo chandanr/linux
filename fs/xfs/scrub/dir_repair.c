@@ -35,6 +35,7 @@
 #include "scrub/repair.h"
 #include "scrub/array.h"
 #include "scrub/blob.h"
+#include "scrub/parent.h"
 
 /*
  * Directory Repair
@@ -1061,36 +1062,6 @@ xrep_dir_rebuild_tree(
 }
 
 /*
- * Make sure we return with a valid parent inode.
- *
- * If the directory salvaging step found a single '..' entry, check the alleged
- * parent for a dentry pointing to the directory.  If this succeeds, we're
- * done.  Otherwise, scan the entire filesystem for a parent.
- */
-STATIC int
-xrep_dir_validate_parent(
-	struct xrep_dir		*rd)
-{
-	struct xfs_scrub	*sc = rd->sc;
-
-	/*
-	 * If we're the root directory, we are our own parent.  If we're an
-	 * unlinked directory, the parent /won't/ have a link to us.  Set the
-	 * parent directory to the root for both cases.
-	 */
-	if (rd->sc->ip->i_ino == sc->mp->m_sb.sb_rootino ||
-	    VFS_I(rd->sc->ip)->i_nlink == 0) {
-		rd->parent_ino = sc->mp->m_sb.sb_rootino;
-		return 0;
-	}
-
-	if (!xfs_verify_dir_ino(sc->mp, rd->parent_ino))
-		return -EFSCORRUPTED;
-
-	return 0;
-}
-
-/*
  * Repair the directory metadata.
  *
  * XXX: Directory entry buffers can be multiple fsblocks in size.  The buffer
@@ -1167,11 +1138,13 @@ xrep_dir(
 
 	/*
 	 * Validate the parent pointer that we observed while salvaging the
-	 * directory; or scan the filesystem to find one.
+	 * directory; or scan the filesystem to find one.  If we can't find
+	 * one, we'll set a bogus parent and let the parent pointer repair
+	 * fix it.
 	 */
-	error = xrep_dir_validate_parent(&rd);
+	error = xrep_dir_parent_find(rd.sc, &rd.parent_ino);
 	if (error)
-		goto out;
+		return error;
 
 	/* Now rebuild the directory information. */
 	return xrep_dir_rebuild_tree(&rd);
@@ -1180,6 +1153,5 @@ out_names:
 	xblob_destroy(rd.dir_names);
 out_arr:
 	xfbma_destroy(rd.dir_entries);
-out:
 	return error;
 }
