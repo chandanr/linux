@@ -168,8 +168,14 @@ xchk_teardown(
 		xfs_irele(sc->ip);
 		sc->ip = NULL;
 	}
-	if (sc->sm->sm_flags & XFS_SCRUB_IFLAG_REPAIR)
+	if (sc->flags & XCHK_FS_FROZEN) {
+		int		err2 = xchk_fs_thaw(sc);
+
+		if (!error && err2)
+			error = err2;
+	} else if (sc->sm->sm_flags & XFS_SCRUB_IFLAG_REPAIR) {
 		mnt_drop_write_file(sc->file);
+	}
 	if (sc->flags & XCHK_REAPING_DISABLED)
 		xchk_start_reaping(sc);
 	if (sc->flags & XCHK_HAS_QUOTAOFFLOCK) {
