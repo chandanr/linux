@@ -404,6 +404,7 @@ out_check_rval:
 		rval = 0;
 	if (!rval) {
 		*inum = args->inumber;
+		name->type = args->filetype;
 		if (ci_name) {
 			ci_name->name = args->value;
 			ci_name->len = args->valuelen;
