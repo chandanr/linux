@@ -18,6 +18,10 @@
 #include "xfs_trace.h"
 #include "xfs_inode.h"
 #include "xfs_quota.h"
+#include "xfs_bmap_btree.h"
+#include "xfs_da_format.h"
+#include "xfs_da_btree.h"
+#include "xfs_trans_space.h"
 
 /*
  * Metadata Inode Number Management
@@ -398,4 +402,20 @@ xfs_imeta_mount(
 	struct xfs_mount	*mp)
 {
 	return 0;
+}
+
+/* Calculate the log block reservation to create a metadata inode. */
+unsigned int
+xfs_imeta_create_space_res(
+	struct xfs_mount	*mp)
+{
+	return XFS_IALLOC_SPACE_RES(mp);
+}
+
+/* Calculate the log block reservation to unlink a metadata inode. */
+unsigned int
+xfs_imeta_unlink_space_res(
+	struct xfs_mount	*mp)
+{
+	return XFS_REMOVE_SPACE_RES(mp);
 }
