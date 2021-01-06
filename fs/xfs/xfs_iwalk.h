@@ -46,4 +46,7 @@ int xfs_inobt_walk(struct xfs_mount *mp, struct xfs_trans *tp,
 
 #define XFS_INOBT_WALK_FLAGS_ALL (XFS_INOBT_WALK_SAME_AG)
 
+int xfs_iwalk_find_next(struct xfs_mount *mp, struct xfs_trans *tp,
+		struct xfs_buf *agi_bp, xfs_ino_t *cursor);
+
 #endif /* __XFS_IWALK_H__ */

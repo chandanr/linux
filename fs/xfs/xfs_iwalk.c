@@ -21,6 +21,7 @@
 #include "xfs_health.h"
 #include "xfs_trans.h"
 #include "xfs_pwork.h"
+#include "xfs_bit.h"
 
 /*
  * Walking Inodes in the Filesystem
@@ -129,21 +130,11 @@ xfs_iwalk_adjust_start(
 	struct xfs_inobt_rec_incore	*irec)	/* btree record */
 {
 	int				idx;	/* index into inode chunk */
-	int				i;
 
 	idx = agino - irec->ir_startino;
 
-	/*
-	 * We got a right chunk with some left inodes allocated at it.  Grab
-	 * the chunk record.  Mark all the uninteresting inodes free because
-	 * they're before our start point.
-	 */
-	for (i = 0; i < idx; i++) {
-		if (XFS_INOBT_MASK(i) & ~irec->ir_free)
-			irec->ir_freecount++;
-	}
-
 	irec->ir_free |= xfs_inobt_maskn(0, idx);
+	irec->ir_freecount = hweight64(irec->ir_free);
 }
 
 /* Allocate memory for a walk. */
@@ -758,5 +749,113 @@ xfs_inobt_walk(
 	}
 
 	xfs_iwalk_free(&iwag);
+	return error;
+}
+
+/*
+ * Set *cursor to the next allocated inode after whatever it's set to now.
+ * The caller must set *cursor to zero before the first invocation.
+ */
+int
+xfs_iwalk_find_next(
+	struct xfs_mount	*mp,
+	struct xfs_trans	*tp,
+	struct xfs_buf		*agi_bp,
+	xfs_ino_t		*cursor)
+{
+	struct xfs_inobt_rec_incore	rec;
+	struct xfs_btree_cur	*cur;
+	xfs_ino_t		lastino = NULLFSINO;
+	xfs_agnumber_t		agno;
+	xfs_agino_t		first, last;
+	xfs_agino_t		agino;
+	int			has_rec;
+	int			error;
+
+	agno = XFS_INO_TO_AGNO(mp, *cursor);
+	agino = XFS_INO_TO_AGINO(mp, *cursor);
+	ASSERT(agno == xfs_daddr_to_agno(mp, XFS_BUF_ADDR(agi_bp)));
+
+	/* If the cursor is beyond the end of this AG, move to the next one. */
+	xfs_agino_range(mp, agno, &first, &last);
+	if (agino > last) {
+		*cursor = XFS_AGINO_TO_INO(mp, agno + 1, 0);
+		return -EAGAIN;
+	}
+
+	/*
+	 * Look up the inode chunk for the current cursor position.  If there
+	 * is no chunk here, we want the next one.
+	 */
+	cur = xfs_inobt_init_cursor(mp, tp, agi_bp, agno, XFS_BTNUM_INO);
+	error = xfs_inobt_lookup(cur, agino, XFS_LOOKUP_LE, &has_rec);
+	if (!error && !has_rec)
+		error = xfs_btree_increment(cur, 0, &has_rec);
+	while (!error) {
+		xfs_ino_t	rec_fsino;
+
+		/*
+		 * If we've run out of inobt records in this AG, move the
+		 * cursor on to the next AG and exit.  The caller can try
+		 * again with the next AG.
+		 */
+		if (!has_rec) {
+			*cursor = XFS_AGINO_TO_INO(mp, agno + 1, 0);
+			error = -EAGAIN;
+			break;
+		}
+
+		error = xfs_inobt_get_rec(cur, &rec, &has_rec);
+		if (error)
+			break;
+		if (!has_rec) {
+			error = -EFSCORRUPTED;
+			break;
+		}
+
+		/* Make sure that we always move forward. */
+		rec_fsino = XFS_AGINO_TO_INO(mp, agno, rec.ir_startino);
+		if (lastino != NULLFSINO &&
+		    XFS_IS_CORRUPT(mp, lastino >= rec_fsino)) {
+			error = -EFSCORRUPTED;
+			break;
+		}
+		lastino = rec_fsino + XFS_INODES_PER_CHUNK - 1;
+
+		/*
+		 * If this record only covers inodes that come before the
+		 * cursor, advance to the next record.
+		 */
+		if (rec.ir_startino + XFS_INODES_PER_CHUNK <= agino) {
+			error = xfs_btree_increment(cur, 0, &has_rec);
+			continue;
+		}
+
+		/*
+		 * If the incoming lookup put us in the middle of an inobt
+		 * record, mark it and the previous inodes "free" so that the
+		 * search for allocated inodes will start at the cursor.  Use
+		 * funny math to avoid overflowing the bit shift.
+		 */
+		if (agino >= rec.ir_startino)
+			xfs_iwalk_adjust_start(agino + 1, &rec);
+
+		/*
+		 * If there are allocated inodes in this chunk, find them,
+		 * and update the cursor.
+		 */
+		if (rec.ir_freecount < XFS_INODES_PER_CHUNK) {
+			int	next = xfs_lowbit64(~rec.ir_free);
+
+			*cursor = XFS_AGINO_TO_INO(mp, agno,
+					rec.ir_startino + next);
+			break;
+		}
+
+		/* Oh well, try the next chunk in the tree. */
+		error = xfs_btree_increment(cur, 0, &has_rec);
+	}
+
+	xfs_btree_del_cursor(cur, error);
 	return error;
 }
