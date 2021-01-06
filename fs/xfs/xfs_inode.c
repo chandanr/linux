@@ -588,30 +588,22 @@ out_unlock:
 }
 
 /*
- * Initialise a newly allocated inode and return the in-core inode to the
- * caller locked exclusively.
+ * Set up an incore inode for a newly allocated ondisk inode and return it to
+ * the caller locked exclusively.
  */
 static int
-xfs_init_new_inode(
+xfs_inode_ialloc_iget(
 	struct xfs_trans	*tp,
 	xfs_ino_t		ino,
-	const struct xfs_ialloc_args *args,
 	struct xfs_inode	**ipp)
 {
 	struct xfs_mount	*mp = tp->t_mountp;
-	int			error;
 
 	/*
 	 * Get the in-core inode with the lock held exclusively to prevent
 	 * others from looking at until we're done.
 	 */
-	error = xfs_iget(mp, tp, ino, XFS_IGET_CREATE, XFS_ILOCK_EXCL, ipp);
-	if (error)
-		return error;
-
-	ASSERT(*ipp != NULL);
-	xfs_inode_init(tp, args, *ipp);
-	return 0;
+	return xfs_iget(mp, tp, ino, XFS_IGET_CREATE, XFS_ILOCK_EXCL, ipp);
 }
 
 /* Set up the inode allocation parameters for standard file inheritance. */
@@ -701,7 +693,13 @@ xfs_dir_ialloc(
 		return -EFSCORRUPTED;
 	}
 
-	return xfs_init_new_inode(*tpp, ino, args, ipp);
+	error = xfs_inode_ialloc_iget(*tpp, ino, ipp);
+	if (error)
+		return error;
+
+	ASSERT(*ipp != NULL);
+	xfs_inode_init(*tpp, args, *ipp);
+	return 0;
 }
 
 /*
