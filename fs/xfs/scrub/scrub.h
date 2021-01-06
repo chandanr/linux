@@ -70,7 +70,13 @@ struct xfs_scrub {
 	 */
 	struct xfs_inode		*ip;
 
+	/* Kernel memory buffer used by scrubbers; freed at teardown. */
 	void				*buf;
+
+	/* xfile used by the scrubbers; freed at teardown. */
+	struct xfile			*xfile;
+
+	/* Lock flags for @ip. */
 	uint				ilock_flags;
 
 	/* See the XCHK/XREP state flags below. */

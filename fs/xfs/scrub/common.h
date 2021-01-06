@@ -85,10 +85,16 @@ int xchk_setup_xattr(struct xfs_scrub *sc);
 int xchk_setup_symlink(struct xfs_scrub *sc);
 int xchk_setup_parent(struct xfs_scrub *sc);
 #ifdef CONFIG_XFS_RT
-int xchk_setup_rt(struct xfs_scrub *sc);
+int xchk_setup_rtbitmap(struct xfs_scrub *sc);
+int xchk_setup_rtsummary(struct xfs_scrub *sc);
 #else
 static inline int
-xchk_setup_rt(struct xfs_scrub *sc)
+xchk_setup_rtbitmap(struct xfs_scrub *sc)
+{
+	return -ENOENT;
+}
+static inline int
+xchk_setup_rtsummary(struct xfs_scrub *sc)
 {
 	return -ENOENT;
 }
