@@ -457,7 +457,7 @@ xfs_iroot_realloc(
 	}
 
 	/* Compute the new and old record count and space requirements. */
-	cur_max = xfs_bmbt_maxrecs(mp, old_size, 0);
+	cur_max = xfs_bmbt_maxrecs(mp, old_size, false);
 	new_max = cur_max + rec_diff;
 	ASSERT(new_max >= 0);
 	new_size = xfs_bmap_broot_space_calc(mp, new_max);
