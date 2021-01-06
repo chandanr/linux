@@ -30,6 +30,7 @@
 #include "xfs_fsmap.h"
 #include "xfs_btree_staging.h"
 #include "xfs_icache.h"
+#include "xfs_swapext.h"
 
 /*
  * We include this last to have the helpers above available for the trace
