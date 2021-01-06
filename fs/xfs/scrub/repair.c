@@ -526,6 +526,18 @@ xrep_newbt_alloc_blocks(
 			.resv		= xnr->resv,
 		};
 
+		/*
+		 * If we don't want an rmap update on the allocation, we need
+		 * to fix the freelist with the NORMAP flag set so that we
+		 * don't also try to create an rmap for new AGFL blocks.  This
+		 * should only ever be used by the rmap repair function.
+		 */
+		if (xfs_rmap_should_skip_owner_update(&xnr->oinfo)) {
+			error = xrep_fix_freelist(sc, XFS_ALLOC_FLAG_NORMAP);
+			if (error)
+				return error;
+		}
+
 		error = xfs_alloc_vextent(&args);
 		if (error)
 			return error;
@@ -847,7 +859,7 @@ xrep_bload_estimate_slack(
 int
 xrep_fix_freelist(
 	struct xfs_scrub	*sc,
-	bool			can_shrink)
+	int			alloc_flags)
 {
 	struct xfs_alloc_arg	args = {0};
 
@@ -857,8 +869,7 @@ xrep_fix_freelist(
 	args.alignment = 1;
 	args.pag = sc->sa.pag;
 
-	return xfs_alloc_fix_freelist(&args,
-			can_shrink ? 0 : XFS_ALLOC_FLAG_NOSHRINK);
+	return xfs_alloc_fix_freelist(&args, alloc_flags);
 }
 
 /*
@@ -872,7 +883,7 @@ xrep_put_freelist(
 	int			error;
 
 	/* Make sure there's space on the freelist. */
-	error = xrep_fix_freelist(sc, true);
+	error = xrep_fix_freelist(sc, 0);
 	if (error)
 		return error;
 
@@ -993,6 +1004,14 @@ xrep_reap_ag_extent(
 				rb->oinfo);
 	} else if (rb->resv == XFS_AG_RESV_AGFL) {
 		error = xrep_put_freelist(sc, agbno);
+	} else if (rb->resv == XFS_AG_RESV_RMAPBT) {
+		/*
+		 * rmapbt blocks are counted as free space, so we have to pass
+		 * XFS_AG_RESV_RMAPBT in the freeing operation to avoid
+		 * decreasing fdblocks incorrectly.
+		 */
+		error = xfs_free_extent(sc->tp, fsbno, aglen, rb->oinfo,
+				rb->resv);
 	} else {
 		/*
 		 * Use deferred frees to get rid of the old btree blocks to try

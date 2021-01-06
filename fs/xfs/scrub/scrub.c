@@ -263,7 +263,7 @@ static const struct xchk_meta_ops meta_scrub_ops[] = {
 		.setup	= xchk_setup_ag_rmapbt,
 		.scrub	= xchk_rmapbt,
 		.has	= xfs_sb_version_hasrmapbt,
-		.repair	= xrep_notsupported,
+		.repair	= xrep_rmapbt,
 	},
 	[XFS_SCRUB_TYPE_REFCNTBT] = {	/* refcountbt */
 		.type	= ST_PERAG,
