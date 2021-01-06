@@ -33,6 +33,7 @@
 #include "xfs_defer.h"
 #include "xfs_extfree_item.h"
 #include "xfs_reflink.h"
+#include "xfs_health.h"
 #include "scrub/scrub.h"
 #include "scrub/common.h"
 #include "scrub/trace.h"
