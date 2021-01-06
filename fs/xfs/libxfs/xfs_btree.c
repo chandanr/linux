@@ -5224,12 +5224,17 @@ xfs_btree_has_more_records(
 		return block->bb_u.s.bb_rightsib != cpu_to_be32(NULLAGBLOCK);
 }
 
-/* Compute the maximum allowed height for a given btree type. */
-static unsigned int
+/*
+ * Compute the maximum allowed height for a given btree type.  If XFS_BTNUM_MAX
+ * is passed in, the maximum allowed height for all btree types is returned.
+ */
+unsigned int
 xfs_btree_maxlevels(
 	struct xfs_mount	*mp,
 	xfs_btnum_t		btnum)
 {
+	unsigned int		ret;
+
 	switch (btnum) {
 	case XFS_BTNUM_BNO:
 	case XFS_BTNUM_CNT:
@@ -5245,9 +5250,15 @@ xfs_btree_maxlevels(
 	case XFS_BTNUM_REFC:
 		return mp->m_refc_maxlevels;
 	default:
-		ASSERT(0);
-		return XFS_BTREE_MAXLEVELS;
+		break;
 	}
+
+	ret = mp->m_ag_maxlevels;
+	ret = max(ret, mp->m_bm_maxlevels[XFS_DATA_FORK]);
+	ret = max(ret, mp->m_bm_maxlevels[XFS_ATTR_FORK]);
+	ret = max(ret, M_IGEO(mp)->inobt_maxlevels);
+	ret = max(ret, mp->m_rmap_maxlevels);
+	return max(ret, mp->m_refc_maxlevels);
 }
 
 /* Allocate a new btree cursor of the appropriate size. */
