@@ -13,6 +13,7 @@
 #define XFS_IMETA_DEFINE_PATH(name, path) \
 const struct xfs_imeta_path name = { \
 	.im_path = (path), \
+	.im_ftype = XFS_DIR3_FT_REG_FILE, \
 	.im_depth = ARRAY_SIZE(path), \
 }
 
@@ -23,11 +24,14 @@ struct xfs_imeta_path {
 
 	/* Number of strings in path. */
 	unsigned int	im_depth;
+
+	/* Expected file type. */
+	unsigned int	im_ftype;
 };
 
 /* Cleanup widget for metadata inode creation and deletion. */
 struct xfs_imeta_end {
-	/* empty for now */
+	struct xfs_inode	*dp;
 };
 
 /* Lookup keys for static metadata inodes. */
@@ -36,9 +40,12 @@ extern const struct xfs_imeta_path XFS_IMETA_RTSUMMARY;
 extern const struct xfs_imeta_path XFS_IMETA_USRQUOTA;
 extern const struct xfs_imeta_path XFS_IMETA_GRPQUOTA;
 extern const struct xfs_imeta_path XFS_IMETA_PRJQUOTA;
+extern const struct xfs_imeta_path XFS_IMETA_METADIR;
 
 int xfs_imeta_lookup(struct xfs_mount *mp, const struct xfs_imeta_path *path,
 		     xfs_ino_t *ino);
+
+void xfs_imeta_set_metaflag(struct xfs_trans *tp, struct xfs_inode *ip);
 
 /* Don't allocate quota for this file. */
 #define XFS_IMETA_CREATE_NOQUOTA	(1 << 0)
@@ -54,6 +61,7 @@ void xfs_imeta_end_update(struct xfs_mount *mp, struct xfs_imeta_end *cleanup,
 
 bool xfs_is_static_meta_ino(struct xfs_mount *mp, xfs_ino_t ino);
 int xfs_imeta_mount(struct xfs_mount *mp);
+void xfs_imeta_droplink(struct xfs_inode *ip);
 
 unsigned int xfs_imeta_create_space_res(struct xfs_mount *mp);
 unsigned int xfs_imeta_unlink_space_res(struct xfs_mount *mp);

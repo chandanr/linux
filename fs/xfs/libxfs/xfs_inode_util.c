@@ -21,6 +21,7 @@
 #include "xfs_error.h"
 #include "xfs_trace.h"
 #include "xfs_inode_item.h"
+#include "xfs_imeta.h"
 
 uint16_t
 xfs_flags2diflags(
@@ -832,6 +833,7 @@ xfs_droplink(
 	xfs_trans_ichgtime(tp, ip, XFS_ICHGTIME_CHG);
 
 	drop_nlink(VFS_I(ip));
+	xfs_imeta_droplink(ip);
 	xfs_trans_log_inode(tp, ip, XFS_ILOG_CORE);
 
 	if (VFS_I(ip)->i_nlink)

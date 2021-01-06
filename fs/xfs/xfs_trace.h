@@ -4624,6 +4624,58 @@ DEFINE_IMETA_SB_EVENT(xfs_imeta_sb_unlink);
 DEFINE_IMETA_SB_EVENT(xfs_imeta_sb_link);
 DEFINE_AG_ERROR_EVENT(xfs_imeta_end_update);
 
+#define XFS_DIR3_FTYPE_STR \
+	{ XFS_DIR3_FT_UNKNOWN,	"unknown" }, \
+	{ XFS_DIR3_FT_REG_FILE,	"file" }, \
+	{ XFS_DIR3_FT_DIR,	"directory" }, \
+	{ XFS_DIR3_FT_CHRDEV,	"char" }, \
+	{ XFS_DIR3_FT_BLKDEV,	"block" }, \
+	{ XFS_DIR3_FT_FIFO,	"fifo" }, \
+	{ XFS_DIR3_FT_SOCK,	"sock" }, \
+	{ XFS_DIR3_FT_SYMLINK,	"symlink" }, \
+	{ XFS_DIR3_FT_WHT,	"whiteout" }
+
+DECLARE_EVENT_CLASS(xfs_imeta_dir_class,
+	TP_PROTO(struct xfs_inode *dp, struct xfs_name *name,
+		 xfs_ino_t ino),
+	TP_ARGS(dp, name, ino),
+	TP_STRUCT__entry(
+		__field(dev_t, dev)
+		__field(xfs_ino_t, dp_ino)
+		__field(xfs_ino_t, ino)
+		__field(int, ftype)
+		__field(int, namelen)
+		__dynamic_array(char, name, name->len)
+	),
+	TP_fast_assign(
+		__entry->dev = VFS_I(dp)->i_sb->s_dev;
+		__entry->dp_ino = dp->i_ino;
+		__entry->ino = ino,
+		__entry->ftype = name->type;
+		__entry->namelen = name->len;
+		memcpy(__get_str(name), name->name, name->len);
+	),
+	TP_printk("dev %d:%d dir 0x%llx type %s name '%.*s' ino 0x%llx",
+		  MAJOR(__entry->dev), MINOR(__entry->dev),
+		  __entry->dp_ino,
+		  __print_symbolic(__entry->ftype, XFS_DIR3_FTYPE_STR),
+		  __entry->namelen,
+		  __get_str(name),
+		  __entry->ino)
+)
+
+#define DEFINE_IMETA_DIR_EVENT(name) \
+DEFINE_EVENT(xfs_imeta_dir_class, name, \
+	TP_PROTO(struct xfs_inode *dp, struct xfs_name *name, \
+		 xfs_ino_t ino), \
+	TP_ARGS(dp, name, ino))
+DEFINE_IMETA_DIR_EVENT(xfs_imeta_dir_lookup_component);
+DEFINE_IMETA_DIR_EVENT(xfs_imeta_dir_lookup_found);
+DEFINE_IMETA_DIR_EVENT(xfs_imeta_dir_try_create);
+DEFINE_IMETA_DIR_EVENT(xfs_imeta_dir_created);
+DEFINE_IMETA_DIR_EVENT(xfs_imeta_dir_unlinked);
+DEFINE_IMETA_DIR_EVENT(xfs_imeta_dir_link);
+
 #endif /* _TRACE_XFS_H */
 
 #undef TRACE_INCLUDE_PATH
