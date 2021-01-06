@@ -918,7 +918,7 @@ xchk_metadata_inode_forks(
  * example, trying to get the IOLOCK while in transaction context, or just
  * plain breaking AG-order or inode-order inode locking rules.  Either way,
  * the only way to avoid an ABBA deadlock is to use trylock and back off if
- * we can't.
+ * we can't.  We try for two seconds before giving up.
  */
 int
 xchk_ilock_inverted(
@@ -930,7 +930,7 @@ xchk_ilock_inverted(
 	for (i = 0; i < 20; i++) {
 		if (xfs_ilock_nowait(ip, lock_mode))
 			return 0;
-		delay(1);
+		delay(HZ / 10);
 	}
 	return -EDEADLOCK;
 }
