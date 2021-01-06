@@ -70,5 +70,7 @@ unsigned int xfs_imeta_unlink_space_res(struct xfs_mount *mp);
 int xfs_imeta_iget(struct xfs_mount *mp, xfs_ino_t ino, unsigned char ftype,
 		struct xfs_inode **ipp);
 void xfs_imeta_irele(struct xfs_inode *ip);
+int xfs_imeta_ensure_dirpath(struct xfs_mount *mp,
+			     const struct xfs_imeta_path *path);
 
 #endif /* __XFS_IMETA_H__ */
