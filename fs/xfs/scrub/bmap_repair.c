@@ -67,6 +67,9 @@ struct xrep_bmap {
 
 	/* Which fork are we fixing? */
 	int			whichfork;
+
+	/* Do we allow unwritten extents? */
+	bool			allow_unwritten;
 };
 
 /* Remember this reverse-mapping as a series of bmap records. */
@@ -130,6 +133,9 @@ xrep_bmap_check_fork_rmap(
 	/* Check that this is within the AG. */
 	if (!xfs_verify_agbext(sc->mp, sc->sa.agno, rec->rm_startblock,
 				rec->rm_blockcount))
+		return -EFSCORRUPTED;
+
+	if ((rec->rm_flags & XFS_RMAP_UNWRITTEN) && !rb->allow_unwritten)
 		return -EFSCORRUPTED;
 
 	/* Make sure this isn't free space. */
@@ -570,10 +576,11 @@ xrep_bmap_check_inputs(
 }
 
 /* Repair an inode fork. */
-STATIC int
+int
 xrep_bmap(
 	struct xfs_scrub	*sc,
-	int			whichfork)
+	int			whichfork,
+	bool			allow_unwritten)
 {
 	struct xrep_bmap	*rb;
 	int			error = 0;
@@ -587,6 +594,7 @@ xrep_bmap(
 		return -ENOMEM;
 	rb->sc = sc;
 	rb->whichfork = whichfork;
+	rb->allow_unwritten = allow_unwritten;
 
 	/* Set up some storage */
 	rb->bmap_records = xfbma_init("bmap records",
@@ -624,7 +632,7 @@ int
 xrep_bmap_data(
 	struct xfs_scrub	*sc)
 {
-	return xrep_bmap(sc, XFS_DATA_FORK);
+	return xrep_bmap(sc, XFS_DATA_FORK, true);
 }
 
 /* Repair an inode's attr fork. */
@@ -632,5 +640,5 @@ int
 xrep_bmap_attr(
 	struct xfs_scrub	*sc)
 {
-	return xrep_bmap(sc, XFS_ATTR_FORK);
+	return xrep_bmap(sc, XFS_ATTR_FORK, false);
 }

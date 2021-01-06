@@ -32,6 +32,7 @@
 #include "xfs_attr_remote.h"
 #include "xfs_defer.h"
 #include "xfs_extfree_item.h"
+#include "xfs_reflink.h"
 #include "scrub/scrub.h"
 #include "scrub/common.h"
 #include "scrub/trace.h"
@@ -1511,5 +1512,84 @@ xrep_reset_perag_resv(
 		goto out;
 	error = xfs_ag_resv_init(sc->sa.pag, sc->tp);
 out:
+	return error;
+}
+
+/*
+ * Repair the ondisk forks of a metadata inode.  The caller must ensure that
+ * sc->ip points to the metadata inode and the ILOCK is held on that inode.
+ * The inode must not be joined to the transaction before the call, and will
+ * not be afterwards.
+ */
+int
+xrep_metadata_inode_forks(
+	struct xfs_scrub	*sc)
+{
+	__u32			smtype;
+	__u32			smflags;
+	bool			dirty = false;
+	int			error;
+
+	/* Clear the reflink flag since metadata never shares. */
+	if (xfs_is_reflink_inode(sc->ip)) {
+		dirty = true;
+		xfs_trans_ijoin(sc->tp, sc->ip, 0);
+		error = xfs_reflink_clear_inode_flag(sc->ip, &sc->tp);
+		if (error)
+			return error;
+	}
+
+	/*
+	 * If we modified the inode, roll the transaction but don't rejoin the
+	 * inode to the new transaction because xrep_bmap_data can do that.
+	 */
+	if (dirty) {
+		error = xfs_trans_roll(&sc->tp);
+		if (error)
+			return error;
+		dirty = false;
+	}
+
+	/*
+	 * Let's see if the forks need repair.  We're going to open-code calls
+	 * to the bmapbtd scrub and repair functions so that we can hang on to
+	 * the resources that we already acquired instead of using the standard
+	 * setup/teardown routines.
+	 */
+	smtype = sc->sm->sm_type;
+	smflags = sc->sm->sm_flags;
+	sc->sm->sm_type = XFS_SCRUB_TYPE_BMBTD;
+	sc->sm->sm_flags &= ~XFS_SCRUB_FLAGS_OUT;
+
+	error = xchk_metadata_inode_forks(sc);
+	if (error || !xfs_scrub_needs_repair(sc->sm))
+		goto out;
+
+	/*
+	 * Repair the data fork.  This will potentially join the inode to the
+	 * transaction.  We do not allow unwritten extents in metadata files.
+	 */
+	error = xrep_bmap(sc, XFS_DATA_FORK, false);
+	if (error)
+		goto out;
+
+	/*
+	 * Roll the transaction but don't rejoin the inode to the new
+	 * transaction because we're done making changes to the inode.
+	 */
+	error = xfs_trans_roll(&sc->tp);
+	if (error)
+		goto out;
+
+	/* Bail out if we still need repairs. */
+	sc->sm->sm_flags &= ~XFS_SCRUB_FLAGS_OUT;
+	error = xchk_metadata_inode_forks(sc);
+	if (error)
+		goto out;
+	if (xfs_scrub_needs_repair(sc->sm))
+		error = -EFSCORRUPTED;
+out:
+	sc->sm->sm_type = smtype;
+	sc->sm->sm_flags = smflags;
 	return error;
 }
