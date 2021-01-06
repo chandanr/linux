@@ -766,6 +766,57 @@ xfs_qm_destroy_quotainfo(
 }
 
 /*
+ * Switch the group and project quota in-core inode pointers if needed.
+ *
+ * On v4 superblocks that don't have separate pquotino, we share an inode
+ * between gquota and pquota. If the on-disk superblock has GQUOTA and the
+ * filesystem is now mounted with PQUOTA, just use sb_gquotino for sb_pquotino
+ * and vice-versa.
+ */
+STATIC int
+xfs_qm_qino_switch(
+	struct xfs_mount	*mp,
+	struct xfs_inode	**ipp,
+	unsigned int		flags,
+	bool			*need_alloc)
+{
+	xfs_ino_t		ino = NULLFSINO;
+	int			error;
+
+	if (xfs_sb_version_has_pquotino(&mp->m_sb) ||
+	    !(flags & (XFS_QMOPT_PQUOTA | XFS_QMOPT_GQUOTA)))
+		return 0;
+
+	if ((flags & XFS_QMOPT_PQUOTA) &&
+	    (mp->m_sb.sb_gquotino != NULLFSINO)) {
+		ino = mp->m_sb.sb_gquotino;
+		if (XFS_IS_CORRUPT(mp, mp->m_sb.sb_pquotino != NULLFSINO)) {
+			xfs_fs_mark_sick(mp, XFS_SICK_FS_PQUOTA);
+			return -EFSCORRUPTED;
+		}
+	} else if ((flags & XFS_QMOPT_GQUOTA) &&
+		   (mp->m_sb.sb_pquotino != NULLFSINO)) {
+		ino = mp->m_sb.sb_pquotino;
+		if (XFS_IS_CORRUPT(mp, mp->m_sb.sb_gquotino != NULLFSINO)) {
+			xfs_fs_mark_sick(mp, XFS_SICK_FS_GQUOTA);
+			return -EFSCORRUPTED;
+		}
+	}
+
+	if (ino == NULLFSINO)
+		return 0;
+
+	error = xfs_iget(mp, NULL, ino, 0, 0, ipp);
+	if (error)
+		return error;
+
+	mp->m_sb.sb_gquotino = NULLFSINO;
+	mp->m_sb.sb_pquotino = NULLFSINO;
+	*need_alloc = false;
+	return 0;
+}
+
+/*
  * Create an inode and return with a reference already taken, but unlocked
  * This is how we create quota inodes
  */
@@ -785,43 +836,9 @@ xfs_qm_qino_alloc(
 	xfs_ialloc_internal_args(&args, S_IFREG);
 
 	*ipp = NULL;
-	/*
-	 * With superblock that doesn't have separate pquotino, we
-	 * share an inode between gquota and pquota. If the on-disk
-	 * superblock has GQUOTA and the filesystem is now mounted
-	 * with PQUOTA, just use sb_gquotino for sb_pquotino and
-	 * vice-versa.
-	 */
-	if (!xfs_sb_version_has_pquotino(&mp->m_sb) &&
-			(flags & (XFS_QMOPT_PQUOTA|XFS_QMOPT_GQUOTA))) {
-		xfs_ino_t ino = NULLFSINO;
-
-		if ((flags & XFS_QMOPT_PQUOTA) &&
-			     (mp->m_sb.sb_gquotino != NULLFSINO)) {
-			ino = mp->m_sb.sb_gquotino;
-			if (XFS_IS_CORRUPT(mp,
-					   mp->m_sb.sb_pquotino != NULLFSINO)) {
-				xfs_fs_mark_sick(mp, XFS_SICK_FS_PQUOTA);
-				return -EFSCORRUPTED;
-			}
-		} else if ((flags & XFS_QMOPT_GQUOTA) &&
-			     (mp->m_sb.sb_pquotino != NULLFSINO)) {
-			ino = mp->m_sb.sb_pquotino;
-			if (XFS_IS_CORRUPT(mp,
-					   mp->m_sb.sb_gquotino != NULLFSINO)) {
-				xfs_fs_mark_sick(mp, XFS_SICK_FS_GQUOTA);
-				return -EFSCORRUPTED;
-			}
-		}
-		if (ino != NULLFSINO) {
-			error = xfs_iget(mp, NULL, ino, 0, 0, ipp);
-			if (error)
-				return error;
-			mp->m_sb.sb_gquotino = NULLFSINO;
-			mp->m_sb.sb_pquotino = NULLFSINO;
-			need_alloc = false;
-		}
-	}
+	error = xfs_qm_qino_switch(mp, ipp, flags, &need_alloc);
+	if (error)
+		return error;
 
 	error = xfs_trans_alloc(mp, &M_RES(mp)->tr_create,
 			need_alloc ? XFS_QM_QINOCREATE_SPACE_RES(mp) : 0,
