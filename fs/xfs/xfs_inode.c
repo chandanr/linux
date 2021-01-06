@@ -628,6 +628,22 @@ xfs_ialloc_inherit_args(
 	args->prid = xfs_get_initial_prid(dp);
 }
 
+/* Set up the inode allocation parameters for internal files. */
+void
+xfs_ialloc_internal_args(
+	struct xfs_ialloc_args	*args,
+	umode_t			mode)
+{
+	args->mnt_userns = &init_user_ns;
+	args->uid = GLOBAL_ROOT_UID;
+	args->gid = GLOBAL_ROOT_GID;
+	args->prid = 0;
+	args->mode = mode;
+	args->flags = XFS_IALLOC_ARGS_FORCE_UID |
+		      XFS_IALLOC_ARGS_FORCE_GID |
+		      XFS_IALLOC_ARGS_FORCE_MODE;
+}
+
 /*
  * Allocates a new inode from disk and return a pointer to the incore copy. This
  * routine will internally commit the current transaction and allocate a new one
@@ -641,29 +657,16 @@ xfs_ialloc_inherit_args(
  */
 int
 xfs_dir_ialloc(
-	struct user_namespace	*mnt_userns,
 	struct xfs_trans	**tpp,
-	struct xfs_inode	*dp,
-	umode_t			mode,
-	xfs_nlink_t		nlink,
-	dev_t			rdev,
-	prid_t			prid,
-	bool			init_xattrs,
+	const struct xfs_ialloc_args *args,
 	struct xfs_inode	**ipp)
 {
-	struct xfs_ialloc_args	args = {
-		.prid		= prid,
-		.nlink		= nlink,
-		.rdev		= rdev,
-		.mode		= mode,
-	};
 	struct xfs_mount	*mp = (*tpp)->t_mountp;
+	struct xfs_inode	*dp = args->pip;
 	struct xfs_buf		*agibp;
 	xfs_ino_t		parent_ino = dp ? dp->i_ino : 0;
 	xfs_ino_t		ino;
 	int			error;
-
-	xfs_ialloc_inherit_args(mnt_userns, dp, &args);
 
 	ASSERT((*tpp)->t_flags & XFS_TRANS_PERM_LOG_RES);
 
@@ -671,7 +674,7 @@ xfs_dir_ialloc(
 	 * Call the space management code to pick the on-disk inode to be
 	 * allocated.
 	 */
-	error = xfs_dialloc_select_ag(tpp, parent_ino, mode, &agibp);
+	error = xfs_dialloc_select_ag(tpp, parent_ino, args->mode, &agibp);
 	if (error)
 		return error;
 
@@ -698,10 +701,7 @@ xfs_dir_ialloc(
 		return -EFSCORRUPTED;
 	}
 
-	if (init_xattrs)
-		args.flags |= XFS_IALLOC_ARGS_INIT_XATTRS;
-
-	return xfs_init_new_inode(*tpp, ino, &args, ipp);
+	return xfs_init_new_inode(*tpp, ino, args, ipp);
 }
 
 /*
@@ -741,41 +741,35 @@ xfs_bumplink(
 
 int
 xfs_create(
-	struct user_namespace	*mnt_userns,
-	xfs_inode_t		*dp,
+	struct xfs_inode	*dp,
 	struct xfs_name		*name,
-	umode_t			mode,
-	dev_t			rdev,
-	bool			init_xattrs,
-	xfs_inode_t		**ipp)
+	const struct xfs_ialloc_args *args,
+	struct xfs_inode	**ipp)
 {
-	int			is_dir = S_ISDIR(mode);
 	struct xfs_mount	*mp = dp->i_mount;
 	struct xfs_inode	*ip = NULL;
 	struct xfs_trans	*tp = NULL;
-	int			error;
-	bool                    unlock_dp_on_error = false;
-	prid_t			prid;
 	struct xfs_dquot	*udqp = NULL;
 	struct xfs_dquot	*gdqp = NULL;
 	struct xfs_dquot	*pdqp = NULL;
 	struct xfs_trans_res	*tres;
+	bool			unlock_dp_on_error = false;
+	bool			is_dir = S_ISDIR(args->mode);
 	uint			resblks;
+	int			error;
 
+	ASSERT(args->pip == dp);
 	trace_xfs_create(dp, name);
 
 	if (XFS_FORCED_SHUTDOWN(mp))
 		return -EIO;
 
-	prid = xfs_get_initial_prid(dp);
-
 	/*
 	 * Make sure that we have allocated dquot(s) on disk.
 	 */
-	error = xfs_qm_vop_dqalloc(dp, mapped_fsuid(mnt_userns),
-			mapped_fsgid(mnt_userns), prid,
-			XFS_QMOPT_QUOTALL | XFS_QMOPT_INHERIT,
-			&udqp, &gdqp, &pdqp);
+	error = xfs_qm_vop_dqalloc(dp, args->uid, args->gid, args->prid,
+			XFS_QMOPT_QUOTALL | XFS_QMOPT_INHERIT, &udqp, &gdqp,
+			&pdqp);
 	if (error)
 		return error;
 
@@ -817,8 +811,7 @@ xfs_create(
 	 * entry pointing to them, but a directory also the "." entry
 	 * pointing to itself.
 	 */
-	error = xfs_dir_ialloc(mnt_userns, &tp, dp, mode, is_dir ? 2 : 1, rdev,
-			       prid, init_xattrs, &ip);
+	error = xfs_dir_ialloc(&tp, args, &ip);
 	if (error)
 		goto out_trans_cancel;
 
@@ -899,34 +892,32 @@ xfs_create(
 
 int
 xfs_create_tmpfile(
-	struct user_namespace	*mnt_userns,
 	struct xfs_inode	*dp,
-	umode_t			mode,
+	const struct xfs_ialloc_args *args,
 	struct xfs_inode	**ipp)
 {
 	struct xfs_mount	*mp = dp->i_mount;
 	struct xfs_inode	*ip = NULL;
 	struct xfs_trans	*tp = NULL;
-	int			error;
-	prid_t                  prid;
 	struct xfs_dquot	*udqp = NULL;
 	struct xfs_dquot	*gdqp = NULL;
 	struct xfs_dquot	*pdqp = NULL;
 	struct xfs_trans_res	*tres;
 	uint			resblks;
+	int			error;
+
+	ASSERT(args->nlink == 0);
+	ASSERT(args->pip == dp);
 
 	if (XFS_FORCED_SHUTDOWN(mp))
 		return -EIO;
 
-	prid = xfs_get_initial_prid(dp);
-
 	/*
 	 * Make sure that we have allocated dquot(s) on disk.
 	 */
-	error = xfs_qm_vop_dqalloc(dp, mapped_fsuid(mnt_userns),
-			mapped_fsgid(mnt_userns), prid,
-			XFS_QMOPT_QUOTALL | XFS_QMOPT_INHERIT,
-			&udqp, &gdqp, &pdqp);
+	error = xfs_qm_vop_dqalloc(dp, args->uid, args->gid, args->prid,
+			XFS_QMOPT_QUOTALL | XFS_QMOPT_INHERIT, &udqp, &gdqp,
+			&pdqp);
 	if (error)
 		return error;
 
@@ -938,8 +929,7 @@ xfs_create_tmpfile(
 	if (error)
 		goto out_release_dquots;
 
-	error = xfs_dir_ialloc(mnt_userns, &tp, dp, mode, 0, 0, prid,
-				false, &ip);
+	error = xfs_dir_ialloc(&tp, args, &ip);
 	if (error)
 		goto out_trans_cancel;
 
@@ -2905,11 +2895,16 @@ xfs_rename_alloc_whiteout(
 	struct xfs_inode	*dp,
 	struct xfs_inode	**wip)
 {
+	struct xfs_ialloc_args	args = {
+		.nlink		= 0,
+		.mode		= S_IFCHR | WHITEOUT_MODE,
+	};
 	struct xfs_inode	*tmpfile;
 	int			error;
 
-	error = xfs_create_tmpfile(mnt_userns, dp, S_IFCHR | WHITEOUT_MODE,
-				   &tmpfile);
+	xfs_ialloc_inherit_args(mnt_userns, dp, &args);
+
+	error = xfs_create_tmpfile(dp, &args, &tmpfile);
 	if (error)
 		return error;
 

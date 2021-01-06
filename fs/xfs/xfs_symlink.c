@@ -223,6 +223,10 @@ xfs_symlink(
 	umode_t			mode,
 	struct xfs_inode	**ipp)
 {
+	struct xfs_ialloc_args	args = {
+		.nlink		= 1,
+		.mode		= S_IFLNK | (mode & ~S_IFMT),
+	};
 	struct xfs_mount	*mp = dp->i_mount;
 	struct xfs_trans	*tp = NULL;
 	struct xfs_inode	*ip = NULL;
@@ -230,11 +234,12 @@ xfs_symlink(
 	int			pathlen;
 	bool                    unlock_dp_on_error = false;
 	xfs_filblks_t		fs_blocks;
-	prid_t			prid;
 	struct xfs_dquot	*udqp = NULL;
 	struct xfs_dquot	*gdqp = NULL;
 	struct xfs_dquot	*pdqp = NULL;
 	uint			resblks;
+
+	xfs_ialloc_inherit_args(mnt_userns, dp, &args);
 
 	*ipp = NULL;
 
@@ -251,13 +256,10 @@ xfs_symlink(
 		return -ENAMETOOLONG;
 	ASSERT(pathlen > 0);
 
-	prid = xfs_get_initial_prid(dp);
-
 	/*
 	 * Make sure that we have allocated dquot(s) on disk.
 	 */
-	error = xfs_qm_vop_dqalloc(dp, mapped_fsuid(mnt_userns),
-			mapped_fsgid(mnt_userns), prid,
+	error = xfs_qm_vop_dqalloc(dp, args.uid, args.gid, args.prid,
 			XFS_QMOPT_QUOTALL | XFS_QMOPT_INHERIT,
 			&udqp, &gdqp, &pdqp);
 	if (error)
@@ -297,8 +299,7 @@ xfs_symlink(
 	/*
 	 * Allocate an inode for the symlink.
 	 */
-	error = xfs_dir_ialloc(mnt_userns, &tp, dp, S_IFLNK | (mode & ~S_IFMT),
-			       1, 0, prid, false, &ip);
+	error = xfs_dir_ialloc(&tp, &args, &ip);
 	if (error)
 		goto out_trans_cancel;
 
