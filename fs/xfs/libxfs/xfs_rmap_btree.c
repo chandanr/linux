@@ -545,30 +545,32 @@ xfs_rmapbt_maxrecs(
 }
 
 /* Compute the maximum height of an rmap btree. */
-void
+unsigned int
 xfs_rmapbt_compute_maxlevels(
-	struct xfs_mount		*mp)
+	struct xfs_mount	*mp)
 {
+	if (!xfs_sb_version_hasreflink(&mp->m_sb)) {
+		/*
+		 * If there's no block sharing, compute the maximum rmapbt
+		 * height assuming one rmap record per AG block.
+		 */
+		return xfs_btree_compute_maxlevels(mp->m_rmap_mnr,
+				mp->m_sb.sb_agblocks);
+	}
+
 	/*
-	 * On a non-reflink filesystem, the maximum number of rmap
-	 * records is the number of blocks in the AG, hence the max
-	 * rmapbt height is log_$maxrecs($agblocks).  However, with
-	 * reflink each AG block can have up to 2^32 (per the refcount
-	 * record format) owners, which means that theoretically we
-	 * could face up to 2^64 rmap records.
+	 * Compute the asymptotic maxlevels for an rmapbt on a reflink fs.
 	 *
-	 * That effectively means that the max rmapbt height must be
-	 * XFS_BTREE_MAXLEVELS.  "Fortunately" we'll run out of AG
-	 * blocks to feed the rmapbt long before the rmapbt reaches
-	 * maximum height.  The reflink code uses ag_resv_critical to
-	 * disallow reflinking when less than 10% of the per-AG metadata
-	 * block reservation since the fallback is a regular file copy.
+	 * On a reflink filesystem, each AG block can have up to 2^32 (per the
+	 * refcount record format) owners, which means that theoretically we
+	 * could face up to 2^64 rmap records.  However, we're likely to run
+	 * out of blocks in the AG long before that happens, which means that
+	 * we must compute the max height based on what the btree will look
+	 * like if it consumes almost all the blocks in the AG due to maximal
+	 * sharing factor.
 	 */
-	if (xfs_sb_version_hasreflink(&mp->m_sb))
-		mp->m_rmap_maxlevels = XFS_BTREE_MAXLEVELS;
-	else
-		mp->m_rmap_maxlevels = xfs_btree_compute_maxlevels(
-				mp->m_rmap_mnr, mp->m_sb.sb_agblocks);
+	return xfs_btree_compute_maxlevels_size(mp->m_sb.sb_agblocks,
+			mp->m_rmap_mnr[1]);
 }
 
 /* Calculate the refcount btree size for some records. */

@@ -1106,23 +1106,34 @@ xfs_trans_resv_calc(
 
 /*
  * Compute an alternate set of log reservation sizes for use exclusively with
- * minimum log size calculations.
+ * minimum log size calculations.  Caller must ensure that no other
+ * transactions are running.
  */
 void
 xfs_trans_resv_calc_logsize(
 	struct xfs_mount	*mp,
 	struct xfs_trans_resv	*resp)
 {
+	unsigned int		rmap_maxlevels = mp->m_rmap_maxlevels;
+
 	ASSERT(resp != M_RES(mp));
 
 	/*
 	 * The metadata directory tree feature drops the oversized log
-	 * reservations introduced by reflink.
+	 * reservations introduced by reflink and rmap.
 	 */
 	if (xfs_sb_version_hasmetadir(&mp->m_sb)) {
 		xfs_trans_resv_calc(mp, resp);
 		return;
 	}
+
+	/*
+	 * In the early days of rmap+reflink, we hardcoded the rmap maxlevels
+	 * to 9 even if the AG size was smaller.
+	 */
+	if (xfs_sb_version_hasrmapbt(&mp->m_sb) &&
+	    xfs_sb_version_hasreflink(&mp->m_sb))
+		mp->m_rmap_maxlevels = XFS_OLD_REFLINK_RMAP_MAXLEVELS;
 
 	xfs_trans_resv_calc(mp, resp);
 
@@ -1159,4 +1170,7 @@ xfs_trans_resv_calc_logsize(
 		resp->tr_itruncate.tr_logcount = XFS_ITRUNCATE_LOG_COUNT;
 		resp->tr_qm_dqalloc.tr_logcount = XFS_WRITE_LOG_COUNT;
 	}
+
+	/* Put everything back the way it was.  This goes at the end. */
+	mp->m_rmap_maxlevels = rmap_maxlevels;
 }

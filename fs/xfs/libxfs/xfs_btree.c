@@ -4760,6 +4760,40 @@ xfs_btree_compute_maxlevels(
 }
 
 /*
+ * Compute the maximum height of a btree that is allowed to consume up to the
+ * given number of blocks.
+ */
+unsigned int
+xfs_btree_compute_maxlevels_size(
+	unsigned long long	max_btblocks,
+	unsigned int		leaf_mnr)
+{
+	unsigned long long	leaf_blocks = leaf_mnr;
+	unsigned long long	blocks_left;
+	unsigned int		maxlevels;
+
+	if (max_btblocks < 1)
+		return 0;
+
+	/*
+	 * The loop increments maxlevels as long as there would be enough
+	 * blocks left in the reservation to handle each node block at the
+	 * current level pointing to the minimum possible number of leaf blocks
+	 * at the next level down.  We start the loop assuming a single-level
+	 * btree consuming one block.
+	 */
+	maxlevels = 1;
+	blocks_left = max_btblocks - 1;
+	while (leaf_blocks < blocks_left) {
+		maxlevels++;
+		blocks_left -= leaf_blocks;
+		leaf_blocks *= leaf_mnr;
+	}
+
+	return maxlevels;
+}
+
+/*
  * Query a regular btree for all records overlapping a given interval.
  * Start with a LE lookup of the key of low_rec and return all records
  * until we find a record with a key greater than the key of high_rec.
