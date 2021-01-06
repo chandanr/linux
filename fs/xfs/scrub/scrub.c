@@ -204,6 +204,12 @@ xchk_teardown(
 		xfs_irele(sc->tempip);
 		sc->tempip = NULL;
 	}
+	if (sc->orphanage) {
+		if (sc->orphanage_ilock_flags)
+			xfs_iunlock(sc->orphanage, sc->orphanage_ilock_flags);
+		xfs_irele(sc->orphanage);
+		sc->orphanage = NULL;
+	}
 	return error;
 }
 

@@ -1645,6 +1645,7 @@ DEFINE_EVENT(xrep_dirent_class, name, \
 	TP_PROTO(struct xfs_inode *dp, struct xfs_name *name, xfs_ino_t ino), \
 	TP_ARGS(dp, name, ino))
 DEFINE_XREP_DIRENT_CLASS(xrep_dir_insert_rec);
+DEFINE_XREP_DIRENT_CLASS(xrep_move_orphanage);
 
 #endif /* IS_ENABLED(CONFIG_XFS_ONLINE_REPAIR) */
 

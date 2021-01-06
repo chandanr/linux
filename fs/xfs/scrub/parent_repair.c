@@ -434,13 +434,13 @@ xrep_parent(
 
 	/*
 	 * Try to find the parent of this directory.  If we can't find it,
-	 * we'll just bail out for now.
+	 * we'll move the directory to lost+found.
 	 */
 	error = xrep_dir_parent_find(sc, &parent_ino);
 	if (error)
 		return error;
 	if (parent_ino == NULLFSINO)
-		return -EFSCORRUPTED;
+		return xrep_move_to_orphanage(sc);
 
 	return xrep_dir_parent_replace(sc, parent_ino);
 }
