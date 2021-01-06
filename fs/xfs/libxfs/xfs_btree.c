@@ -4870,6 +4870,23 @@ xfs_btree_diff_two_ptrs(
 	return (int64_t)be32_to_cpu(a->s) - be32_to_cpu(b->s);
 }
 
+struct xbtree_hasrec {
+	xfs_btree_key_gap_fn	has_gap;
+
+	/* Keys for the start and end of the range we want to know about. */
+	union xfs_btree_key	start_key;
+	union xfs_btree_key	end_key;
+
+	/* Highest record key we've seen so far. */
+	union xfs_btree_key	high_key;
+
+	/* Are we processing the first record? */
+	bool			first_rec;
+
+	/* Did we see any records at all? */
+	bool			saw_anything;
+};
+
 /* If there's an extent, we're done. */
 STATIC int
 xfs_btree_has_record_helper(
@@ -4877,7 +4894,35 @@ xfs_btree_has_record_helper(
 	union xfs_btree_rec		*rec,
 	void				*priv)
 {
-	return -ECANCELED;
+	union xfs_btree_key		rec_low_key;
+	union xfs_btree_key		rec_high_key;
+	struct xbtree_hasrec		*info = priv;
+	int64_t				res;
+
+	cur->bc_ops->init_key_from_rec(&rec_low_key, rec);
+	if (info->first_rec) {
+		/* Bail if the first record starts after the start key. */
+		res = cur->bc_ops->diff_two_keys(cur, &info->start_key,
+				&rec_low_key);
+		if (res < 0)
+			return -ECANCELED;
+
+		info->first_rec = false;
+	} else {
+		/* Bail if there's a gap with the previous record. */
+		if (info->has_gap(cur, &info->high_key, &rec_low_key))
+			return -ECANCELED;
+	}
+
+	info->saw_anything = true;
+
+	/* If the current record is higher than what we've seen, remember it. */
+	cur->bc_ops->init_high_key_from_rec(&rec_high_key, rec);
+	res = cur->bc_ops->diff_two_keys(cur, &rec_high_key, &info->high_key);
+	if (res > 0)
+		info->high_key = rec_high_key; /* struct copy */
+
+	return 0;
 }
 
 /* Is there a record covering a given range of keys? */
@@ -4886,18 +4931,42 @@ xfs_btree_has_record(
 	struct xfs_btree_cur	*cur,
 	union xfs_btree_irec	*low,
 	union xfs_btree_irec	*high,
+	xfs_btree_key_gap_fn	has_gap,
 	bool			*exists)
 {
+	struct xbtree_hasrec	info = {.first_rec = true, .has_gap = has_gap};
+	union xfs_btree_rec	rec;
+	int64_t			res;
 	int			error;
 
+	cur->bc_rec = *low;
+	cur->bc_ops->init_rec_from_cur(cur, &rec);
+	cur->bc_ops->init_key_from_rec(&info.start_key, &rec);
+
+	cur->bc_rec = *high;
+	cur->bc_ops->init_rec_from_cur(cur, &rec);
+	cur->bc_ops->init_key_from_rec(&info.end_key, &rec);
+
 	error = xfs_btree_query_range(cur, low, high,
-			&xfs_btree_has_record_helper, NULL);
+			&xfs_btree_has_record_helper, &info);
 	if (error == -ECANCELED) {
-		*exists = true;
+		/* Bailing out early means we found an uncovered area. */
+		*exists = false;
 		return 0;
 	}
-	*exists = false;
-	return error;
+	if (error)
+		return error;
+
+	if (!info.saw_anything) {
+		*exists = false;
+	} else {
+		/* Did the record set go at least as far as the end? */
+		res = cur->bc_ops->diff_two_keys(cur, &info.high_key,
+				&info.end_key);
+		*exists = (res >= 0);
+	}
+
+	return 0;
 }
 
 /* Are there more records in this btree? */

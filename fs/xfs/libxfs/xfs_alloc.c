@@ -3439,6 +3439,18 @@ xfs_alloc_query_all(
 	return xfs_btree_query_all(cur, xfs_alloc_query_range_helper, &query);
 }
 
+static bool
+xfs_alloc_has_key_gap(
+	struct xfs_btree_cur		*cur,
+	const union xfs_btree_key	*key1,
+	const union xfs_btree_key	*key2)
+{
+	xfs_agblock_t			next;
+
+	next = be32_to_cpu(key1->alloc.ar_startblock) + 1;
+	return next != be32_to_cpu(key2->alloc.ar_startblock);
+}
+
 /* Is there a record covering a given extent? */
 int
 xfs_alloc_has_record(
@@ -3455,7 +3467,8 @@ xfs_alloc_has_record(
 	memset(&high, 0xFF, sizeof(high));
 	high.a.ar_startblock = bno + len - 1;
 
-	return xfs_btree_has_record(cur, &low, &high, exists);
+	return xfs_btree_has_record(cur, &low, &high, xfs_alloc_has_key_gap,
+			exists);
 }
 
 /*

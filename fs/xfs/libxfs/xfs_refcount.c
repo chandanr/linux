@@ -1760,6 +1760,18 @@ out_free:
 	return error;
 }
 
+static bool
+xfs_refcount_has_key_gap(
+	struct xfs_btree_cur		*cur,
+	const union xfs_btree_key	*key1,
+	const union xfs_btree_key	*key2)
+{
+	xfs_agblock_t			next;
+
+	next = be32_to_cpu(key1->refc.rc_startblock) + 1;
+	return next != be32_to_cpu(key2->refc.rc_startblock);
+}
+
 /* Is there a record covering a given extent? */
 int
 xfs_refcount_has_record(
@@ -1776,5 +1788,6 @@ xfs_refcount_has_record(
 	memset(&high, 0xFF, sizeof(high));
 	high.rc.rc_startblock = bno + len - 1;
 
-	return xfs_btree_has_record(cur, &low, &high, exists);
+	return xfs_btree_has_record(cur, &low, &high, xfs_refcount_has_key_gap,
+			exists);
 }
