@@ -14,6 +14,7 @@ struct xfs_ibulk {
 	unsigned int		icount;   /* number of elements in ubuffer */
 	unsigned int		ocount;   /* number of records returned */
 	unsigned int		flags;    /* see XFS_IBULK_FLAG_* */
+	int			version;  /* structure version to be returned */
 };
 
 /* Only iterate within the same AG as startino */

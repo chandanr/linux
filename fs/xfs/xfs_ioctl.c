@@ -715,6 +715,8 @@ xfs_fsbulkstat_one_fmt(
 {
 	struct xfs_bstat		bs1;
 
+	ASSERT(breq->version == XFS_BULKSTAT_VERSION_V1);
+
 	xfs_bulkstat_to_bstat(breq->mp, &bs1, bstat);
 	if (copy_to_user(breq->ubuffer, &bs1, sizeof(bs1)))
 		return -EFAULT;
@@ -727,6 +729,8 @@ xfs_fsinumbers_fmt(
 	const struct xfs_inumbers	*igrp)
 {
 	struct xfs_inogrp		ig1;
+
+	ASSERT(breq->version == XFS_INUMBERS_VERSION_V1);
 
 	xfs_inumbers_to_inogrp(&ig1, igrp);
 	if (copy_to_user(breq->ubuffer, &ig1, sizeof(struct xfs_inogrp)))
@@ -787,14 +791,17 @@ xfs_ioc_fsbulkstat(
 	 */
 	if (cmd == XFS_IOC_FSINUMBERS) {
 		breq.startino = lastino ? lastino + 1 : 0;
+		breq.version = XFS_INUMBERS_VERSION_V1;
 		error = xfs_inumbers(&breq, xfs_fsinumbers_fmt);
 		lastino = breq.startino - 1;
 	} else if (cmd == XFS_IOC_FSBULKSTAT_SINGLE) {
 		breq.startino = lastino;
 		breq.icount = 1;
+		breq.version = XFS_BULKSTAT_VERSION_V1;
 		error = xfs_bulkstat_one(&breq, xfs_fsbulkstat_one_fmt);
 	} else {	/* XFS_IOC_FSBULKSTAT */
 		breq.startino = lastino ? lastino + 1 : 0;
+		breq.version = XFS_BULKSTAT_VERSION_V1;
 		error = xfs_bulkstat(&breq, xfs_fsbulkstat_one_fmt);
 		lastino = breq.startino - 1;
 	}
@@ -819,6 +826,8 @@ xfs_bulkstat_fmt(
 	struct xfs_ibulk		*breq,
 	const struct xfs_bulkstat	*bstat)
 {
+	ASSERT(breq->version == XFS_BULKSTAT_VERSION_V5);
+
 	if (copy_to_user(breq->ubuffer, bstat, sizeof(struct xfs_bulkstat)))
 		return -EFAULT;
 	return xfs_ibulk_advance(breq, sizeof(struct xfs_bulkstat));
@@ -918,13 +927,15 @@ STATIC int
 xfs_ioc_bulkstat(
 	struct file			*file,
 	unsigned int			cmd,
-	struct xfs_bulkstat_req __user	*arg)
+	struct xfs_bulkstat_req __user	*arg,
+	int				version)
 {
 	struct xfs_mount		*mp = XFS_I(file_inode(file))->i_mount;
 	struct xfs_bulk_ireq		hdr;
 	struct xfs_ibulk		breq = {
 		.mp			= mp,
 		.mnt_userns		= file_mnt_user_ns(file),
+		.version		= version,
 	};
 	int				error;
 
@@ -960,6 +971,8 @@ xfs_inumbers_fmt(
 	struct xfs_ibulk		*breq,
 	const struct xfs_inumbers	*igrp)
 {
+	ASSERT(breq->version == XFS_INUMBERS_VERSION_V5);
+
 	if (copy_to_user(breq->ubuffer, igrp, sizeof(struct xfs_inumbers)))
 		return -EFAULT;
 	return xfs_ibulk_advance(breq, sizeof(struct xfs_inumbers));
@@ -970,11 +983,13 @@ STATIC int
 xfs_ioc_inumbers(
 	struct xfs_mount		*mp,
 	unsigned int			cmd,
-	struct xfs_inumbers_req __user	*arg)
+	struct xfs_inumbers_req __user	*arg,
+	int				version)
 {
 	struct xfs_bulk_ireq		hdr;
 	struct xfs_ibulk		breq = {
 		.mp			= mp,
+		.version		= version,
 	};
 	int				error;
 
@@ -1882,10 +1897,12 @@ xfs_file_ioctl(
 	case XFS_IOC_FSINUMBERS:
 		return xfs_ioc_fsbulkstat(filp, cmd, arg);
 
-	case XFS_IOC_BULKSTAT:
-		return xfs_ioc_bulkstat(filp, cmd, arg);
+	case XFS_IOC_BULKSTAT_V5:
+		return xfs_ioc_bulkstat(filp, cmd, arg,
+				XFS_BULKSTAT_VERSION_V5);
 	case XFS_IOC_INUMBERS:
-		return xfs_ioc_inumbers(mp, cmd, arg);
+		return xfs_ioc_inumbers(mp, cmd, arg,
+				XFS_INUMBERS_VERSION_V5);
 
 	case XFS_IOC_FSGEOMETRY_V1:
 		return xfs_ioc_fsgeometry(mp, arg, 3);

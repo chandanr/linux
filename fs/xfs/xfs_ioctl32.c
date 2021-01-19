@@ -88,6 +88,8 @@ xfs_fsinumbers_fmt_compat(
 	struct xfs_inogrp		ig1;
 	struct xfs_inogrp		*igrp = &ig1;
 
+	ASSERT(breq->version == XFS_INUMBERS_VERSION_V1);
+
 	xfs_inumbers_to_inogrp(&ig1, ig);
 
 	if (put_user(igrp->xi_startino,   &p32->xi_startino) ||
@@ -176,6 +178,8 @@ xfs_fsbulkstat_one_fmt_compat(
 	struct compat_xfs_bstat	__user	*p32 = breq->ubuffer;
 	struct xfs_bstat		bs1;
 	struct xfs_bstat		*buffer = &bs1;
+
+	ASSERT(breq->version == XFS_BULKSTAT_VERSION_V1);
 
 	xfs_bulkstat_to_bstat(breq->mp, &bs1, bstat);
 
@@ -293,15 +297,18 @@ xfs_compat_ioc_fsbulkstat(
 	 */
 	if (cmd == XFS_IOC_FSINUMBERS_32) {
 		breq.startino = lastino ? lastino + 1 : 0;
+		breq.version = XFS_INUMBERS_VERSION_V1;
 		error = xfs_inumbers(&breq, inumbers_func);
 		lastino = breq.startino - 1;
 	} else if (cmd == XFS_IOC_FSBULKSTAT_SINGLE_32) {
 		breq.startino = lastino;
 		breq.icount = 1;
+		breq.version = XFS_BULKSTAT_VERSION_V1;
 		error = xfs_bulkstat_one(&breq, bs_one_func);
 		lastino = breq.startino;
 	} else if (cmd == XFS_IOC_FSBULKSTAT_32) {
 		breq.startino = lastino ? lastino + 1 : 0;
+		breq.version = XFS_BULKSTAT_VERSION_V1;
 		error = xfs_bulkstat(&breq, bs_one_func);
 		lastino = breq.startino - 1;
 	} else {

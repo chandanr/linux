@@ -134,7 +134,7 @@ xfs_bulkstat_one_int(
 
 	buf->bs_xflags = xfs_ip2xflags(ip);
 	buf->bs_extsize_blks = ip->i_extsize;
-	buf->bs_extents = xfs_ifork_nextents(&ip->i_df);
+	buf->bs_extents32 = xfs_ifork_nextents(&ip->i_df);
 	xfs_bulkstat_health(ip, buf);
 	buf->bs_aextents = xfs_ifork_nextents(ip->i_afp);
 	buf->bs_forkoff = XFS_IFORK_BOFF(ip);
@@ -356,7 +356,7 @@ xfs_bulkstat_to_bstat(
 	bs1->bs_blocks = bstat->bs_blocks;
 	bs1->bs_xflags = bstat->bs_xflags;
 	bs1->bs_extsize = XFS_FSB_TO_B(mp, bstat->bs_extsize_blks);
-	bs1->bs_extents = bstat->bs_extents;
+	bs1->bs_extents = bstat->bs_extents32;
 	bs1->bs_gen = bstat->bs_gen;
 	bs1->bs_projid_lo = bstat->bs_projectid & 0xFFFF;
 	bs1->bs_forkoff = bstat->bs_forkoff;
