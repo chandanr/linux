@@ -253,6 +253,7 @@ typedef struct xfs_fsop_resblks {
 #define XFS_FSOP_GEOM_FLAGS_BIGTIME	(1 << 21) /* 64-bit nsec timestamps */
 #define XFS_FSOP_GEOM_FLAGS_INOBTCNT	(1 << 22) /* inobt btree counter */
 #define XFS_FSOP_GEOM_FLAGS_ATOMIC_SWAP	(1 << 23) /* atomic swapext */
+#define XFS_FSOP_GEOM_FLAGS_METADIR	(1 << 24) /* metadata directories */
 
 /*
  * Minimum and maximum sizes need for growth checks.
