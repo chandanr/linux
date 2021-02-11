@@ -1218,8 +1218,8 @@ DECLARE_EVENT_CLASS(xrep_dinode_class,
 		__field(uint64_t, size)
 		__field(uint64_t, nblocks)
 		__field(uint32_t, extsize)
-		__field(uint32_t, nextents)
-		__field(uint16_t, anextents)
+		__field(uint32_t, nextents32)
+		__field(uint16_t, nextents16)
 		__field(uint8_t, forkoff)
 		__field(uint8_t, aformat)
 		__field(uint16_t, flags)
@@ -1238,8 +1238,8 @@ DECLARE_EVENT_CLASS(xrep_dinode_class,
 		__entry->size = be64_to_cpu(dip->di_size);
 		__entry->nblocks = be64_to_cpu(dip->di_nblocks);
 		__entry->extsize = be32_to_cpu(dip->di_extsize);
-		__entry->nextents = be32_to_cpu(dip->di_nextents);
-		__entry->anextents = be16_to_cpu(dip->di_anextents);
+		__entry->nextents32 = be32_to_cpu(dip->di_nextents32);
+		__entry->nextents16 = be16_to_cpu(dip->di_nextents16);
 		__entry->forkoff = dip->di_forkoff;
 		__entry->aformat = dip->di_aformat;
 		__entry->flags = be16_to_cpu(dip->di_flags);
@@ -1247,7 +1247,7 @@ DECLARE_EVENT_CLASS(xrep_dinode_class,
 		__entry->flags2 = be64_to_cpu(dip->di_flags2);
 		__entry->cowextsize = be32_to_cpu(dip->di_cowextsize);
 	),
-	TP_printk("dev %d:%d ino 0x%llx mode 0x%x version %u format %u uid %u gid %u disize 0x%llx nblocks 0x%llx extsize %u nextents %u anextents %u forkoff 0x%x aformat %u flags 0x%x gen 0x%x flags2 0x%llx cowextsize %u",
+	TP_printk("dev %d:%d ino 0x%llx mode 0x%x version %u format %u uid %u gid %u disize 0x%llx nblocks 0x%llx extsize %u nextents32 %u nextents16 %u forkoff 0x%x aformat %u flags 0x%x gen 0x%x flags2 0x%llx cowextsize %u",
 		  MAJOR(__entry->dev), MINOR(__entry->dev),
 		  __entry->ino,
 		  __entry->mode,
@@ -1258,8 +1258,8 @@ DECLARE_EVENT_CLASS(xrep_dinode_class,
 		  __entry->size,
 		  __entry->nblocks,
 		  __entry->extsize,
-		  __entry->nextents,
-		  __entry->anextents,
+		  __entry->nextents32,
+		  __entry->nextents16,
 		  __entry->forkoff,
 		  __entry->aformat,
 		  __entry->flags,
