@@ -603,7 +603,9 @@ xrep_dinode_bad_extents_fork(
 	xfs_extnum_t		nex;
 	int			fork_size;
 
-	nex = xfs_dfork_nextents(dip, whichfork);
+	if (xfs_dfork_nextents(dip, whichfork, &nex))
+		return true;
+
 	fork_size = nex * sizeof(struct xfs_bmbt_rec);
 	if (fork_size < 0 || fork_size > dfork_size)
 		return true;
@@ -634,11 +636,14 @@ xrep_dinode_bad_btree_fork(
 	int			whichfork)
 {
 	struct xfs_bmdr_block	*dfp;
+	xfs_extnum_t		nextents;
 	int			nrecs;
 	int			level;
 
-	if (xfs_dfork_nextents(dip, whichfork) <=
-			dfork_size / sizeof(struct xfs_bmbt_rec))
+	if (xfs_dfork_nextents(dip, whichfork, &nextents))
+		return true;
+
+	if (nextents <= dfork_size / sizeof(struct xfs_bmbt_rec))
 		return true;
 
 	if (dfork_size < sizeof(struct xfs_bmdr_block))
@@ -775,11 +780,15 @@ xrep_dinode_check_afork(
 	struct xfs_dinode		*dip)
 {
 	struct xfs_attr_shortform	*sfp;
+	xfs_extnum_t			nextents;
 	int				size;
+
+	if (xfs_dfork_nextents(dip, XFS_ATTR_FORK, &nextents))
+		return true;
 
 	if (XFS_DFORK_BOFF(dip) == 0)
 		return dip->di_aformat != XFS_DINODE_FMT_EXTENTS ||
-		       dip->di_anextents != 0;
+		       nextents != 0;
 
 	size = XFS_DFORK_SIZE(dip, sc->mp, XFS_ATTR_FORK);
 	switch (XFS_DFORK_FORMAT(dip, XFS_ATTR_FORK)) {
@@ -836,11 +845,15 @@ xrep_dinode_ensure_forkoff(
 	size_t				bmdr_minsz = xfs_bmdr_space_calc(1);
 	unsigned int			lit_sz = XFS_LITINO(sc->mp);
 	unsigned int			afork_min, dfork_min;
+	int				error;
 
 	trace_xrep_dinode_ensure_forkoff(sc, dip);
 
-	dnextents = xfs_dfork_nextents(dip, XFS_DATA_FORK);
-	anextents = xfs_dfork_nextents(dip, XFS_ATTR_FORK);
+	error = xfs_dfork_nextents(dip, XFS_DATA_FORK, &dnextents);
+	ASSERT(error == 0);
+
+	error = xfs_dfork_nextents(dip, XFS_ATTR_FORK, &anextents);
+	ASSERT(error == 0);
 
 	/*
 	 * Before calling this function, xrep_dinode_core ensured that both
@@ -1028,6 +1041,7 @@ xrep_dinode_zap_forks(
 	uint16_t			mode;
 	bool				zap_datafork = false;
 	bool				zap_attrfork = false;
+	int				error;
 
 	trace_xrep_dinode_zap_forks(sc, dip);
 
@@ -1036,12 +1050,12 @@ xrep_dinode_zap_forks(
 	/* Inode counters don't make sense? */
 	nblocks = be64_to_cpu(dip->di_nblocks);
 
-	nextents = xfs_dfork_nextents(dip, XFS_DATA_FORK);
-	if (nextents > nblocks)
+	error = xfs_dfork_nextents(dip, XFS_DATA_FORK, &nextents);
+	if (error || nextents > nblocks)
 		zap_datafork = true;
 
-	naextents = xfs_dfork_nextents(dip, XFS_ATTR_FORK);
-	if (naextents > nblocks)
+	error = xfs_dfork_nextents(dip, XFS_ATTR_FORK, &naextents);
+	if (error || naextents > nblocks)
 		zap_attrfork = true;
 
 	if (nextents + naextents > nblocks)
