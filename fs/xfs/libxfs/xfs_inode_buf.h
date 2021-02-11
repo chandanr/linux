@@ -36,8 +36,8 @@ xfs_failaddr_t xfs_inode_validate_extsize(struct xfs_mount *mp,
 xfs_failaddr_t xfs_inode_validate_cowextsize(struct xfs_mount *mp,
 		uint32_t cowextsize, uint16_t mode, uint16_t flags,
 		uint64_t flags2);
-xfs_extnum_t xfs_dfork_nextents(struct xfs_mount *mp, struct xfs_dinode *dip,
-		int whichfork);
+int xfs_dfork_nextents(struct xfs_mount *mp, struct xfs_dinode *dip,
+		int whichfork, xfs_extnum_t *nextents);
 
 static inline uint64_t xfs_inode_encode_bigtime(struct timespec64 tv)
 {

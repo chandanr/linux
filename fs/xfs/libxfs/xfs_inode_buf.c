@@ -345,7 +345,8 @@ xfs_dinode_verify_fork(
 	xfs_extnum_t		di_nextents;
 	xfs_extnum_t		max_extents;
 
-	di_nextents = xfs_dfork_nextents(mp, dip, whichfork);
+	if (xfs_dfork_nextents(mp, dip, whichfork, &di_nextents))
+		return __this_address;
 
 	switch (XFS_DFORK_FORMAT(dip, whichfork)) {
 	case XFS_DINODE_FMT_LOCAL:
@@ -377,29 +378,31 @@ xfs_dinode_verify_fork(
 	return NULL;
 }
 
-xfs_extnum_t
+int
 xfs_dfork_nextents(
 	struct xfs_mount	*mp,
 	struct xfs_dinode	*dip,
-	int			whichfork)
+	int			whichfork,
+	xfs_extnum_t		*nextents)
 {
-	xfs_extnum_t		nextents = 0;
+	int			error = 0;
 
 	switch (whichfork) {
 	case XFS_DATA_FORK:
-		nextents = be32_to_cpu(dip->di_nextents);
+		*nextents = be32_to_cpu(dip->di_nextents);
 		break;
 
 	case XFS_ATTR_FORK:
-		nextents = be16_to_cpu(dip->di_anextents);
+		*nextents = be16_to_cpu(dip->di_anextents);
 		break;
 
 	default:
 		ASSERT(0);
+		error = -EINVAL;
 		break;
 	}
 
-	return nextents;
+	return error;
 }
 
 static xfs_failaddr_t
@@ -502,6 +505,7 @@ xfs_dinode_verify(
 	uint64_t		flags2;
 	uint64_t		di_size;
 	xfs_extnum_t            nextents;
+	xfs_extnum_t            naextents;
 	int64_t			nblocks;
 
 	if (dip->di_magic != cpu_to_be16(XFS_DINODE_MAGIC))
@@ -533,8 +537,13 @@ xfs_dinode_verify(
 	if ((S_ISLNK(mode) || S_ISDIR(mode)) && di_size == 0)
 		return __this_address;
 
-	nextents = xfs_dfork_nextents(mp, dip, XFS_DATA_FORK);
-	nextents += xfs_dfork_nextents(mp, dip, XFS_ATTR_FORK);
+	if (xfs_dfork_nextents(mp, dip, XFS_DATA_FORK, &nextents))
+		return __this_address;
+
+	if (xfs_dfork_nextents(mp, dip, XFS_ATTR_FORK, &naextents))
+		return __this_address;
+
+	nextents += naextents;
 	nblocks = be64_to_cpu(dip->di_nblocks);
 
 	/* Fork checks carried over from xfs_iformat_fork */
@@ -595,7 +604,7 @@ xfs_dinode_verify(
 		default:
 			return __this_address;
 		}
-		if (xfs_dfork_nextents(mp, dip, XFS_ATTR_FORK))
+		if (naextents)
 			return __this_address;
 	}
 
