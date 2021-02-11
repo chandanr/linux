@@ -222,6 +222,38 @@ xchk_dinode_nsec(
 		xchk_ino_set_corrupt(sc, ino);
 }
 
+STATIC void
+xchk_dinode_fork_recs(
+	struct xfs_scrub	*sc,
+	struct xfs_dinode	*dip,
+	xfs_ino_t		ino,
+	xfs_extnum_t		nextents,
+	int			whichfork)
+{
+	struct xfs_mount	*mp = sc->mp;
+	size_t			fork_recs;
+	unsigned char		format;
+
+	fork_recs = XFS_DFORK_SIZE(dip, mp, whichfork) /
+		sizeof(struct xfs_bmbt_rec);
+	format = XFS_DFORK_FORMAT(dip, whichfork);
+
+	switch (format) {
+	case XFS_DINODE_FMT_EXTENTS:
+		if (nextents > fork_recs)
+			xchk_ino_set_corrupt(sc, ino);
+		break;
+	case XFS_DINODE_FMT_BTREE:
+		if (nextents <= fork_recs)
+			xchk_ino_set_corrupt(sc, ino);
+		break;
+	default:
+		if (nextents != 0)
+			xchk_ino_set_corrupt(sc, ino);
+		break;
+	}
+}
+
 /* Scrub all the ondisk inode fields. */
 STATIC void
 xchk_dinode(
@@ -230,7 +262,6 @@ xchk_dinode(
 	xfs_ino_t		ino)
 {
 	struct xfs_mount	*mp = sc->mp;
-	size_t			fork_recs;
 	unsigned long long	isize;
 	uint64_t		flags2;
 	xfs_extnum_t		nextents;
@@ -238,6 +269,7 @@ xchk_dinode(
 	prid_t			prid;
 	uint16_t		flags;
 	uint16_t		mode;
+	int			error;
 
 	flags = be16_to_cpu(dip->di_flags);
 	if (dip->di_version >= 3)
@@ -393,32 +425,29 @@ xchk_dinode(
 	xchk_inode_extsize(sc, dip, ino, mode, flags);
 
 	/* di_nextents */
-	nextents = xfs_dfork_nextents(dip, XFS_DATA_FORK);
-	fork_recs =  XFS_DFORK_DSIZE(dip, mp) / sizeof(struct xfs_bmbt_rec);
-	switch (dip->di_format) {
-	case XFS_DINODE_FMT_EXTENTS:
-		if (nextents > fork_recs)
-			xchk_ino_set_corrupt(sc, ino);
-		break;
-	case XFS_DINODE_FMT_BTREE:
-		if (nextents <= fork_recs)
-			xchk_ino_set_corrupt(sc, ino);
-		break;
-	default:
-		if (nextents != 0)
-			xchk_ino_set_corrupt(sc, ino);
-		break;
+	error = xfs_dfork_nextents(dip, XFS_DATA_FORK, &nextents);
+	if (error) {
+		xchk_ino_set_corrupt(sc, ino);
+		return;
 	}
-
-	naextents = xfs_dfork_nextents(dip, XFS_ATTR_FORK);
+	xchk_dinode_fork_recs(sc, dip, ino, nextents, XFS_DATA_FORK);
 
 	/* di_forkoff */
 	if (XFS_DFORK_APTR(dip) >= (char *)dip + mp->m_sb.sb_inodesize)
 		xchk_ino_set_corrupt(sc, ino);
-	if (naextents != 0 && dip->di_forkoff == 0)
-		xchk_ino_set_corrupt(sc, ino);
 	if (dip->di_forkoff == 0 && dip->di_aformat != XFS_DINODE_FMT_EXTENTS)
 		xchk_ino_set_corrupt(sc, ino);
+
+	error = xfs_dfork_nextents(dip, XFS_ATTR_FORK, &naextents);
+	if (error) {
+		xchk_ino_set_corrupt(sc, ino);
+		return;
+	}
+
+	if (naextents != 0 && dip->di_forkoff == 0) {
+		xchk_ino_set_corrupt(sc, ino);
+		return;
+	}
 
 	/* di_aformat */
 	if (dip->di_aformat != XFS_DINODE_FMT_LOCAL &&
@@ -427,20 +456,8 @@ xchk_dinode(
 		xchk_ino_set_corrupt(sc, ino);
 
 	/* di_anextents */
-	fork_recs =  XFS_DFORK_ASIZE(dip, mp) / sizeof(struct xfs_bmbt_rec);
-	switch (dip->di_aformat) {
-	case XFS_DINODE_FMT_EXTENTS:
-		if (naextents > fork_recs)
-			xchk_ino_set_corrupt(sc, ino);
-		break;
-	case XFS_DINODE_FMT_BTREE:
-		if (naextents <= fork_recs)
-			xchk_ino_set_corrupt(sc, ino);
-		break;
-	default:
-		if (naextents != 0)
-			xchk_ino_set_corrupt(sc, ino);
-	}
+	if (!error)
+		xchk_dinode_fork_recs(sc, dip, ino, naextents, XFS_ATTR_FORK);
 
 	if (dip->di_version >= 3) {
 		xchk_dinode_nsec(sc, ino, dip, dip->di_crtime);
@@ -503,6 +520,7 @@ xchk_inode_xref_bmap(
 	struct xfs_scrub	*sc,
 	struct xfs_dinode	*dip)
 {
+	xfs_extnum_t		dip_nextents;
 	xfs_extnum_t		nextents;
 	xfs_filblks_t		count;
 	xfs_filblks_t		acount;
@@ -516,14 +534,18 @@ xchk_inode_xref_bmap(
 			&nextents, &count);
 	if (!xchk_should_check_xref(sc, &error, NULL))
 		return;
-	if (nextents < xfs_dfork_nextents(dip, XFS_DATA_FORK))
+
+	error = xfs_dfork_nextents(dip, XFS_DATA_FORK, &dip_nextents);
+	if (error || nextents < dip_nextents)
 		xchk_ino_xref_set_corrupt(sc, sc->ip->i_ino);
 
 	error = xfs_bmap_count_blocks(sc->tp, sc->ip, XFS_ATTR_FORK,
 			&nextents, &acount);
 	if (!xchk_should_check_xref(sc, &error, NULL))
 		return;
-	if (nextents != xfs_dfork_nextents(dip, XFS_ATTR_FORK))
+
+	error = xfs_dfork_nextents(dip, XFS_ATTR_FORK, &dip_nextents);
+	if (error || nextents < dip_nextents)
 		xchk_ino_xref_set_corrupt(sc, sc->ip->i_ino);
 
 	/* Check nblocks against the inode. */
