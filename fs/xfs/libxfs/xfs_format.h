@@ -931,28 +931,30 @@ enum xfs_dinode_fmt {
 		(dip)->di_format : \
 		(dip)->di_aformat)
 
-static inline xfs_extnum_t
+static inline int
 xfs_dfork_nextents(
 	struct xfs_dinode	*dip,
-	int			whichfork)
+	int			whichfork,
+	xfs_extnum_t		*nextents)
 {
-	xfs_extnum_t		nextents = 0;
+	int			error = 0;
 
 	switch (whichfork) {
 	case XFS_DATA_FORK:
-		nextents = be32_to_cpu(dip->di_nextents);
+		*nextents = be32_to_cpu(dip->di_nextents);
 		break;
 
 	case XFS_ATTR_FORK:
-		nextents = be16_to_cpu(dip->di_anextents);
+		*nextents = be16_to_cpu(dip->di_anextents);
 		break;
 
 	default:
 		ASSERT(0);
+		error = -EFSCORRUPTED;
 		break;
 	}
 
-	return nextents;
+	return error;
 }
 
 /*
