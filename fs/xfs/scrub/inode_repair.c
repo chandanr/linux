@@ -736,7 +736,10 @@ xrep_dinode_zap_dfork(
 {
 	trace_xrep_dinode_zap_dfork(sc, dip);
 
-	dip->di_nextents32 = 0;
+	if (be64_to_cpu(&dip->di_flags2) & XFS_DIFLAG2_NREXT64)
+		dip->di_nextents64 = 0;
+	else
+		dip->di_nextents32 = 0;
 
 	/* Special files always get reset to DEV */
 	switch (mode & S_IFMT) {
@@ -823,7 +826,11 @@ xrep_dinode_zap_afork(
 	trace_xrep_dinode_zap_afork(sc, dip);
 
 	dip->di_aformat = XFS_DINODE_FMT_EXTENTS;
-	dip->di_nextents16 = 0;
+
+	if (be64_to_cpu(&dip->di_flags2) & XFS_DIFLAG2_NREXT64)
+		dip->di_nextents32 = 0;
+	else
+		dip->di_nextents16 = 0;
 
 	dip->di_forkoff = 0;
 	dip->di_mode = cpu_to_be16(mode & ~0777);
