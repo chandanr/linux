@@ -1901,6 +1901,9 @@ xfs_file_ioctl(
 	case XFS_IOC_BULKSTAT_V5:
 		return xfs_ioc_bulkstat(filp, cmd, arg,
 				XFS_BULKSTAT_VERSION_V5);
+	case XFS_IOC_BULKSTAT_V6:
+		return xfs_ioc_bulkstat(filp, cmd, arg,
+				XFS_BULKSTAT_VERSION_V6);
 	case XFS_IOC_INUMBERS:
 		return xfs_ioc_inumbers(mp, cmd, arg,
 				XFS_INUMBERS_VERSION_V5);

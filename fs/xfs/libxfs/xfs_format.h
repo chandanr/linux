@@ -485,13 +485,15 @@ xfs_sb_has_ro_compat_feature(
 #define XFS_SB_FEAT_INCOMPAT_BIGTIME	(1 << 3)	/* large timestamps */
 #define XFS_SB_FEAT_INCOMPAT_NEEDSREPAIR (1 << 4)	/* needs xfs_repair */
 #define XFS_SB_FEAT_INCOMPAT_METADIR	(1 << 5)	/* metadata dir tree */
-#define XFS_SB_FEAT_INCOMPAT_ALL \
+#define XFS_SB_FEAT_INCOMPAT_NREXT64	(1 << 6)	/* 64-bit data fork extent counter */
+#define XFS_SB_FEAT_INCOMPAT_ALL		\
 		(XFS_SB_FEAT_INCOMPAT_FTYPE|	\
 		 XFS_SB_FEAT_INCOMPAT_SPINODES|	\
 		 XFS_SB_FEAT_INCOMPAT_META_UUID| \
 		 XFS_SB_FEAT_INCOMPAT_BIGTIME| \
 		 XFS_SB_FEAT_INCOMPAT_NEEDSREPAIR| \
-		 XFS_SB_FEAT_INCOMPAT_METADIR)
+		 XFS_SB_FEAT_INCOMPAT_METADIR| \
+		 XFS_SB_FEAT_INCOMPAT_NREXT64)
 
 #define XFS_SB_FEAT_INCOMPAT_UNKNOWN	~XFS_SB_FEAT_INCOMPAT_ALL
 static inline bool
@@ -648,6 +650,12 @@ static inline bool xfs_sb_version_hasmetadir(struct xfs_sb *sbp)
 {
 	return XFS_SB_VERSION_NUM(sbp) == XFS_SB_VERSION_5 &&
 		(sbp->sb_features_incompat & XFS_SB_FEAT_INCOMPAT_METADIR);
+}
+
+static inline bool xfs_sb_version_hasnrext64(struct xfs_sb *sbp)
+{
+	return (XFS_SB_VERSION_NUM(sbp) == XFS_SB_VERSION_5) &&
+		(sbp->sb_features_incompat & XFS_SB_FEAT_INCOMPAT_NREXT64);
 }
 
 /*
@@ -1039,6 +1047,16 @@ typedef struct xfs_dinode {
 	__be64		di_size;	/* number of bytes in file */
 	__be64		di_nblocks;	/* # of direct & btree blocks used */
 	__be32		di_extsize;	/* basic/minimum extent size for file */
+
+	/*
+	 * On a extcnt64bit filesystem, di_nextents64 holds the data fork
+	 * extent count, di_nextents32 holds the attr fork extent count,
+	 * and di_nextents16 must be zero.
+	 *
+	 * Otherwise, di_nextents32 holds the data fork extent count,
+	 * di_nextents16 holds the attr fork extent count, and di_nextents64
+	 * must be zero.
+	 */
 	__be32		di_nextents32;	/* number of extents in data fork */
 	__be16		di_nextents16;	/* number of extents in attribute fork*/
 	__u8		di_forkoff;	/* attr fork offs, <<3 for 64b align */
@@ -1057,7 +1075,8 @@ typedef struct xfs_dinode {
 	__be64		di_lsn;		/* flush sequence */
 	__be64		di_flags2;	/* more random flags */
 	__be32		di_cowextsize;	/* basic cow extent size for file */
-	__u8		di_pad2[12];	/* more padding for future expansion */
+	__u8		di_pad2[4];	/* more padding for future expansion */
+	__be64		di_nextents64;
 
 	/* fields only written to during inode creation */
 	xfs_timestamp_t	di_crtime;	/* time created */
@@ -1113,6 +1132,8 @@ enum xfs_dinode_fmt {
  * Max values for extlen and disk inode's extent counters.
  */
 #define	MAXEXTLEN		((xfs_extlen_t)0x1fffff)	/* 21 bits */
+#define XFS_IFORK_EXTCNT_MAXU48	((xfs_extnum_t)0xffffffffffff)	/* Unsigned 48-bits */
+#define XFS_IFORK_EXTCNT_MAXU32	((xfs_aextnum_t)0xffffffff)	/* Unsigned 32-bits */
 #define XFS_IFORK_EXTCNT_MAXS32 ((xfs_extnum_t)0x7fffffff)	/* Signed 32-bits */
 #define XFS_IFORK_EXTCNT_MAXS16 ((xfs_aextnum_t)0x7fff)		/* Signed 16-bits */
 
@@ -1234,11 +1255,13 @@ static inline void xfs_dinode_put_rdev(struct xfs_dinode *dip, xfs_dev_t rdev)
 #define XFS_DIFLAG2_COWEXTSIZE_BIT   2  /* copy on write extent size hint */
 #define XFS_DIFLAG2_BIGTIME_BIT	3	/* big timestamps */
 #define XFS_DIFLAG2_METADATA_BIT 4	/* filesystem metadata */
+#define XFS_DIFLAG2_NREXT64_BIT 5	/* 64-bit extent counter enabled */
 
 #define XFS_DIFLAG2_DAX		(1 << XFS_DIFLAG2_DAX_BIT)
 #define XFS_DIFLAG2_REFLINK     (1 << XFS_DIFLAG2_REFLINK_BIT)
 #define XFS_DIFLAG2_COWEXTSIZE  (1 << XFS_DIFLAG2_COWEXTSIZE_BIT)
 #define XFS_DIFLAG2_BIGTIME	(1 << XFS_DIFLAG2_BIGTIME_BIT)
+#define XFS_DIFLAG2_NREXT64	(1 << XFS_DIFLAG2_NREXT64_BIT)
 
 /*
  * The inode contains filesystem metadata and can be found through the metadata
