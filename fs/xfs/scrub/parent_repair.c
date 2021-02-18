@@ -49,6 +49,8 @@ struct xrep_parents_scan {
 	void			*data;
 	xrep_parents_walk_fn	fn;
 
+	struct xfs_scrub	*sc;
+
 	/* Potential parent of the directory we're scanning. */
 //	xfs_ino_t		*parent_ino;
 
@@ -129,6 +131,10 @@ xrep_parents_iwalk(
 	if (!S_ISDIR(VFS_I(dp)->i_mode))
 		goto out_rele;
 
+	/* Don't mix metadata and regular directory trees. */
+	if (xfs_is_metadata_inode(dp) ^ xfs_is_metadata_inode(rps->sc->ip))
+		goto out_rele;
+
 	/*
 	 * Try to get the parent directory's IOLOCK.  We still hold the child's
 	 * IOLOCK in exclusive mode, so we must avoid an ABBA deadlock.
@@ -189,6 +195,7 @@ xrep_parents_walk(
 	void			*data)
 {
 	struct xrep_parents_scan rps = {
+		.sc		= sc,
 		.dc.actor	= xrep_parents_iwalk_dirents,
 		.data		= data,
 		.fn		= fn,
@@ -295,6 +302,7 @@ xrep_dir_parent_check(
 		.found_parent	= NULLFSINO,
 	};
 	struct xrep_parents_scan rps = {
+		.sc		= sc,
 		.dc.actor	= xrep_parents_iwalk_dirents,
 		.data		= &dpi,
 		.fn		= xrep_dir_parent_pick,
@@ -334,6 +342,15 @@ xrep_dir_parent_find(
 	 */
 	if (sc->ip == sc->mp->m_rootip) {
 		*parent_ino = sc->mp->m_sb.sb_rootino;
+		return 0;
+	}
+
+	/*
+	 * If we are the metadata root directory, then we are our own parent.
+	 * Return the root directory.
+	 */
+	if (sc->ip == sc->mp->m_metadirip) {
+		*parent_ino = sc->mp->m_sb.sb_metadirino;
 		return 0;
 	}
 

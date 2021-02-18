@@ -221,6 +221,16 @@ xchk_parent_validate(
 	}
 
 	/*
+	 * Metadata and regular inodes cannot cross trees.  This property
+	 * cannot change without a full inode free and realloc cycle, so it's
+	 * safe to check this without holding locks.
+	 */
+	if (xfs_is_metadata_inode(dp) ^ xfs_is_metadata_inode(sc->ip)) {
+		xchk_fblock_set_corrupt(sc, XFS_DATA_FORK, 0);
+		goto out_rele;
+	}
+
+	/*
 	 * We prefer to keep the inode locked while we lock and search
 	 * its alleged parent for a forward reference.  If we can grab
 	 * the iolock, validate the pointers and we're done.  We must
@@ -343,6 +353,14 @@ xchk_parent(
 	/* Is this the root dir?  Then '..' must point to itself. */
 	if (sc->ip == mp->m_rootip) {
 		if (sc->ip->i_ino != mp->m_sb.sb_rootino ||
+		    sc->ip->i_ino != dnum)
+			xchk_fblock_set_corrupt(sc, XFS_DATA_FORK, 0);
+		goto out;
+	}
+
+	/* Is this the metadata root dir?  Then '..' must point to itself. */
+	if (sc->ip == mp->m_metadirip) {
+		if (sc->ip->i_ino != mp->m_sb.sb_metadirino ||
 		    sc->ip->i_ino != dnum)
 			xchk_fblock_set_corrupt(sc, XFS_DATA_FORK, 0);
 		goto out;

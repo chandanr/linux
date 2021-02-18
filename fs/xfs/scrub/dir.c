@@ -133,6 +133,15 @@ xchk_dir_check_ftype(
 			xfs_mode_to_ftype(VFS_I(ip)->i_mode));
 	if (ino_dtype != dtype)
 		xchk_fblock_set_corrupt(sdc->sc, XFS_DATA_FORK, offset);
+
+	/*
+	 * Metadata and regular inodes cannot cross trees.  This property
+	 * cannot change without a full inode free and realloc cycle, so it's
+	 * safe to check this without holding locks.
+	 */
+	if (xfs_is_metadata_inode(ip) ^ xfs_is_metadata_inode(sdc->sc->ip))
+		xchk_fblock_set_corrupt(sdc->sc, XFS_DATA_FORK, 0);
+
 	xfs_irele(ip);
 out:
 	return error;
