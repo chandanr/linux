@@ -597,9 +597,9 @@ xrep_dinode_bad_extents_fork(
 {
 	struct xfs_bmbt_irec	new;
 	struct xfs_bmbt_rec	*dp;
+	xfs_extnum_t		nex;
 	bool			isrt;
 	int			i;
-	int			nex;
 	int			fork_size;
 
 	nex = XFS_DFORK_NEXTENTS(dip, whichfork);
