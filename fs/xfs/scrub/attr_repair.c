@@ -770,7 +770,7 @@ xrep_xattr_fork_remove(
 		unsigned int		i = 0;
 
 		xfs_emerg(sc->mp,
-	"inode 0x%llx attr fork still has %u attr extents, format %d?!",
+	"inode 0x%llx attr fork still has %llu attr extents, format %d?!",
 				ip->i_ino, ifp->if_nextents, ifp->if_format);
 		for_each_xfs_iext(ifp, &icur, &irec) {
 			xfs_err(sc->mp, "[%u]: startoff %llu startblock %llu blockcount %llu state %u", i++, irec.br_startoff, irec.br_startblock, irec.br_blockcount, irec.br_state);
