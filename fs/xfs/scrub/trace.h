@@ -1363,7 +1363,7 @@ TRACE_EVENT(xrep_dinode_count_rmaps,
 		__entry->attr_extents = attr_extents;
 		__entry->block0 = block0;
 	),
-	TP_printk("dev %d:%d ino 0x%llx dblocks %llu rtblocks %llu ablocks %llu dextents %u rtextents %u aextents %u block0 %llu",
+	TP_printk("dev %d:%d ino 0x%llx dblocks %llu rtblocks %llu ablocks %llu dextents %llu rtextents %llu aextents %u block0 %llu",
 		  MAJOR(__entry->dev), MINOR(__entry->dev),
 		  __entry->ino,
 		  __entry->data_blocks,
