@@ -2196,7 +2196,7 @@ DECLARE_EVENT_CLASS(xfs_swap_extent_class,
 		__entry->broot_size = ip->i_df.if_broot_bytes;
 		__entry->fork_off = XFS_IFORK_BOFF(ip);
 	),
-	TP_printk("dev %d:%d ino 0x%llx (%s), %s format, num_extents %d, "
+	TP_printk("dev %d:%d ino 0x%llx (%s), %s format, num_extents %llu, "
 		  "broot size %d, forkoff 0x%x",
 		  MAJOR(__entry->dev), MINOR(__entry->dev),
 		  __entry->ino,
@@ -4557,7 +4557,7 @@ TRACE_EVENT(xfs_swapext_delta_nextents,
 		__entry->d_nexts1 = d_nexts1;
 		__entry->d_nexts2 = d_nexts2;
 	),
-	TP_printk("dev %d:%d ino1 0x%llx nexts %u ino2 0x%llx nexts %u delta1 %lld delta2 %lld",
+	TP_printk("dev %d:%d ino1 0x%llx nexts %llu ino2 0x%llx nexts %llu delta1 %lld delta2 %lld",
 		  MAJOR(__entry->dev), MINOR(__entry->dev),
 		  __entry->ino1, __entry->nexts1,
 		  __entry->ino2, __entry->nexts2,
