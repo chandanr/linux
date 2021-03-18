@@ -20,6 +20,7 @@
 #include "xfs_icache.h"
 #include "xfs_health.h"
 #include "xfs_trans.h"
+#include "xfs_errortag.h"
 
 /*
  * Bulk Stat
@@ -143,7 +144,13 @@ xfs_bulkstat_one_int(
 
 	nextents = xfs_ifork_nextents(&ip->i_df);
 	if (bc->breq->version != XFS_BULKSTAT_VERSION_V6) {
-		if (nextents > XFS_IFORK_EXTCNT_MAXS32) {
+		xfs_extnum_t max_nextents = XFS_IFORK_EXTCNT_MAXS32;
+
+		if (unlikely(XFS_TEST_ERROR(false, mp,
+				XFS_ERRTAG_BULKSTAT_REDUCE_MAX_IEXTENTS)))
+			max_nextents = 10;
+
+		if (nextents > max_nextents) {
 			xfs_iunlock(ip, XFS_ILOCK_SHARED);
 			xfs_irele(ip);
 			error = -EINVAL;
