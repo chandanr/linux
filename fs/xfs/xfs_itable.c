@@ -74,6 +74,7 @@ xfs_bulkstat_one_int(
 	struct xfs_inode	*ip;		/* incore inode pointer */
 	struct inode		*inode;
 	struct xfs_bulkstat	*buf = bc->buf;
+	xfs_extnum_t		nextents;
 	int			error = -EINVAL;
 
 	error = xfs_iget(mp, tp, ino,
@@ -95,7 +96,12 @@ xfs_bulkstat_one_int(
 		buf->bs_gen = inode->i_generation;
 		buf->bs_mode = inode->i_mode & S_IFMT;
 		xfs_bulkstat_health(ip, buf);
-		buf->bs_version = XFS_BULKSTAT_VERSION_V5;
+
+		if (bc->breq->version != XFS_BULKSTAT_VERSION_V6)
+			buf->bs_version = XFS_BULKSTAT_VERSION_V5;
+		else
+			buf->bs_version = XFS_BULKSTAT_VERSION_V6;
+
 		xfs_iunlock(ip, XFS_ILOCK_SHARED);
 		xfs_irele(ip);
 
@@ -134,11 +140,25 @@ xfs_bulkstat_one_int(
 
 	buf->bs_xflags = xfs_ip2xflags(ip);
 	buf->bs_extsize_blks = ip->i_extsize;
-	buf->bs_extents32 = xfs_ifork_nextents(&ip->i_df);
+
+	nextents = xfs_ifork_nextents(&ip->i_df);
+	if (bc->breq->version != XFS_BULKSTAT_VERSION_V6) {
+		if (nextents > XFS_IFORK_EXTCNT_MAXS32) {
+			xfs_iunlock(ip, XFS_ILOCK_SHARED);
+			xfs_irele(ip);
+			error = -EINVAL;
+			goto out_advance;
+		}
+		buf->bs_extents32 = nextents;
+		buf->bs_version = XFS_BULKSTAT_VERSION_V5;
+	} else {
+		buf->bs_extents64 = nextents;
+		buf->bs_version = XFS_BULKSTAT_VERSION_V6;
+	}
+
 	xfs_bulkstat_health(ip, buf);
 	buf->bs_aextents = xfs_ifork_nextents(ip->i_afp);
 	buf->bs_forkoff = XFS_IFORK_BOFF(ip);
-	buf->bs_version = XFS_BULKSTAT_VERSION_V5;
 
 	if (xfs_sb_version_has_v3inode(&mp->m_sb)) {
 		buf->bs_btime = ip->i_crtime.tv_sec;

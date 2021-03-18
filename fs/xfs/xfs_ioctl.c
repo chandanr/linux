@@ -826,7 +826,8 @@ xfs_bulkstat_fmt(
 	struct xfs_ibulk		*breq,
 	const struct xfs_bulkstat	*bstat)
 {
-	ASSERT(breq->version == XFS_BULKSTAT_VERSION_V5);
+	ASSERT(breq->version == XFS_BULKSTAT_VERSION_V5 ||
+		breq->version == XFS_BULKSTAT_VERSION_V6);
 
 	if (copy_to_user(breq->ubuffer, bstat, sizeof(struct xfs_bulkstat)))
 		return -EFAULT;
@@ -922,7 +923,7 @@ xfs_bulk_ireq_teardown(
 	hdr->ocount = breq->ocount;
 }
 
-/* Handle the v5 bulkstat ioctl. */
+/* Handle the v5/v6 bulkstat ioctl. */
 STATIC int
 xfs_ioc_bulkstat(
 	struct file			*file,
