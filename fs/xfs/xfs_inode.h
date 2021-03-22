@@ -6,6 +6,8 @@
 #ifndef	__XFS_INODE_H__
 #define	__XFS_INODE_H__
 
+#include "xfs_trans_resv.h"
+#include "xfs_mount.h"
 #include "xfs_inode_buf.h"
 #include "xfs_inode_fork.h"
 
@@ -17,7 +19,6 @@ struct xfs_inode;
 struct xfs_buf;
 struct xfs_bmbt_irec;
 struct xfs_inode_log_item;
-struct xfs_mount;
 struct xfs_trans;
 struct xfs_dquot;
 
@@ -189,6 +190,14 @@ xfs_get_initial_prid(struct xfs_inode *dp)
 static inline bool xfs_is_reflink_inode(struct xfs_inode *ip)
 {
 	return ip->i_d.di_flags2 & XFS_DIFLAG2_REFLINK;
+}
+
+static inline bool xfs_is_metadata_inode(struct xfs_inode *ip)
+{
+	struct xfs_mount	*mp = ip->i_mount;
+
+	return ip == mp->m_rbmip || ip == mp->m_rsumip ||
+		xfs_is_quota_inode(&mp->m_sb, ip->i_ino);
 }
 
 /*
