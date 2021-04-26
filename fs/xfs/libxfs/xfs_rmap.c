@@ -295,7 +295,7 @@ xfs_rmap_find_left_neighbor_helper(
  * return a match with the same owner and adjacent physical and logical
  * block ranges.
  */
-int
+STATIC int
 xfs_rmap_find_left_neighbor(
 	struct xfs_btree_cur	*cur,
 	xfs_agblock_t		bno,
@@ -328,10 +328,35 @@ xfs_rmap_find_left_neighbor(
 	trace_xfs_rmap_find_left_neighbor_query(cur->bc_mp,
 			cur->bc_ag.agno, bno, 0, owner, offset, flags);
 
-	error = xfs_rmap_query_range(cur, &info.high, &info.high,
-			xfs_rmap_find_left_neighbor_helper, &info);
-	if (error == -ECANCELED)
-		error = 0;
+	/*
+	 * Historically, we always used the range query to walk every reverse
+	 * mapping that could possibly overlap the key that the caller asked
+	 * for, and filter out the ones that don't.  That is very slow when
+	 * there are a lot of records.
+	 *
+	 * However, there are two scenarios where the classic btree search can
+	 * produce correct results -- if the index contains a record that is an
+	 * exact match for the lookup key; and if there are no other records
+	 * between the record we want and the key we supplied.
+	 *
+	 * As an optimization, try a non-overlapped lookup first.  This makes
+	 * extent conversion and remap operations run a bit faster if the
+	 * physical extents aren't being shared.  If we don't find what we
+	 * want, we fall back to the overlapped query.
+	 */
+	error = xfs_rmap_lookup_le(cur, bno, owner, offset, flags, irec, stat);
+	if (error)
+		return error;
+	if (*stat) {
+		*stat = 0;
+		xfs_rmap_find_left_neighbor_helper(cur, irec, &info);
+	}
+	if (!(*stat)) {
+		error = xfs_rmap_query_range(cur, &info.high, &info.high,
+				xfs_rmap_find_left_neighbor_helper, &info);
+		if (error == -ECANCELED)
+			error = 0;
+	}
 	if (*stat)
 		trace_xfs_rmap_find_left_neighbor_result(cur->bc_mp,
 				cur->bc_ag.agno, irec->rm_startblock,
