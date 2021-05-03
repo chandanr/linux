@@ -25,6 +25,9 @@
 #include "xfs_ag_resv.h"
 #include "xfs_quota.h"
 #include "xfs_bmap.h"
+#include "xfs_da_format.h"
+#include "xfs_da_btree.h"
+#include "xfs_attr_remote.h"
 #include "scrub/scrub.h"
 #include "scrub/common.h"
 #include "scrub/trace.h"
@@ -499,29 +502,53 @@ xrep_put_freelist(
 
 /* Try to invalidate the incore buffer for a block that we're about to free. */
 STATIC void
-xrep_reap_invalidate_block(
+xrep_reap_invalidate_extent(
 	struct xfs_scrub	*sc,
-	xfs_fsblock_t		fsbno)
+	xfs_fsblock_t		fsbno,
+	xfs_extlen_t		len)
 {
+	struct xfs_mount	*mp = sc->mp;
 	struct xfs_buf		*bp;
+	xfs_fsblock_t		fsbnext = fsbno + len;
+	xfs_fsblock_t		i_fsbno = fsbno;
 
 	/*
-	 * If there's an incore buffer for exactly this block, invalidate it.
 	 * Avoid invalidating AG headers and post-EOFS blocks because we never
-	 * own those; and if we can't TRYLOCK the buffer we assume it's owned
-	 * by someone else.
+	 * own those.
 	 */
-	if (!xfs_verify_fsbno(sc->mp, fsbno))
+	if (!xfs_verify_fsbno(mp, fsbno) ||
+	    !xfs_verify_fsbno(mp, fsbnext - 1))
 		return;
 
-	bp = xfs_buf_incore(sc->mp->m_ddev_targp,
-			XFS_FSB_TO_DADDR(sc->mp, fsbno),
-			XFS_FSB_TO_BB(sc->mp, 1), XBF_TRYLOCK);
-	if (!bp)
-		return;
+	/*
+	 * If there are incore buffers for these blocks, invalidate them.  If
+	 * we can't TRYLOCK the buffer we assume it's owned by someone else.
+	 * Double loops are required here because the buffer cache cannot
+	 * detect aliasing.
+	 */
+	for (; i_fsbno < fsbnext; i_fsbno++) {
+		xfs_fsblock_t	i_fsblen = 1;
+		xfs_fsblock_t	max_fsblen;
 
-	xfs_trans_bjoin(sc->tp, bp);
-	xfs_trans_binval(sc->tp, bp);
+		/*
+		 * Max buffer size is the max remote xattr buffer size, which
+		 * is one fs block larger than 64k.
+		 */
+		max_fsblen = min_t(xfs_filblks_t, fsbnext - i_fsbno,
+				xfs_attr3_rmt_blocks(mp, XFS_XATTR_SIZE_MAX));
+
+		for (; i_fsblen < max_fsblen; i_fsblen++) {
+			bp = xfs_buf_incore(mp->m_ddev_targp,
+					XFS_FSB_TO_DADDR(mp, i_fsbno),
+					XFS_FSB_TO_BB(mp, i_fsblen),
+					XBF_TRYLOCK);
+			if (!bp)
+				continue;
+
+			xfs_trans_bjoin(sc->tp, bp);
+			xfs_trans_binval(sc->tp, bp);
+		}
+	}
 }
 
 struct xrep_reap_block {
@@ -531,49 +558,22 @@ struct xrep_reap_block {
 	unsigned int			deferred;
 };
 
-/* Dispose of a single block. */
+/* Dispose of a single extent. */
 STATIC int
-xrep_reap_block(
-	uint64_t			fsbno,
-	void				*priv)
+xrep_reap_ag_extent(
+	struct xrep_reap_block	*rb,
+	struct xfs_buf		*agf_bp,
+	xfs_agnumber_t		agno,
+	xfs_agblock_t		agbno,
+	xfs_extlen_t		aglen,
+	bool			crosslinked)
 {
-	struct xrep_reap_block		*rb = priv;
-	struct xfs_scrub		*sc = rb->sc;
-	struct xfs_btree_cur		*cur;
-	struct xfs_buf			*agf_bp = NULL;
-	xfs_agnumber_t			agno;
-	xfs_agblock_t			agbno;
-	bool				has_other_rmap;
-	bool				need_roll = true;
-	int				error;
+	struct xfs_scrub	*sc = rb->sc;
+	xfs_fsblock_t		fsbno = XFS_AGB_TO_FSB(sc->mp, agno, agbno);
+	bool			need_roll = true;
+	int			error = 0;
 
-	agno = XFS_FSB_TO_AGNO(sc->mp, fsbno);
-	agbno = XFS_FSB_TO_AGBNO(sc->mp, fsbno);
-
-	ASSERT(sc->ip != NULL || agno == sc->sa.agno);
-
-	trace_xrep_dispose_btree_extent(sc->mp, agno, agbno, 1);
-
-	/*
-	 * If we are repairing per-inode metadata, we need to read in the AGF
-	 * buffer.  Otherwise, we're repairing a per-AG structure, so reuse
-	 * the AGF buffer that the setup functions already grabbed.
-	 */
-	if (sc->ip) {
-		error = xfs_alloc_read_agf(sc->mp, sc->tp, agno, 0, &agf_bp);
-		if (error)
-			return error;
-	} else {
-		agf_bp = sc->sa.agf_bp;
-	}
-	cur = xfs_rmapbt_init_cursor(sc->mp, sc->tp, agf_bp, agno);
-
-	/* Can we find any other rmappings? */
-	error = xfs_rmap_has_other_keys(cur, agbno, 1, rb->oinfo,
-			&has_other_rmap);
-	xfs_btree_del_cursor(cur, error);
-	if (error)
-		goto out_free;
+	trace_xrep_dispose_btree_extent(sc->mp, agno, agbno, aglen);
 
 	/*
 	 * If there are other rmappings, this block is cross linked and must
@@ -588,11 +588,13 @@ xrep_reap_block(
 	 * blow on writeout, the filesystem will shut down, and the admin gets
 	 * to run xfs_repair.
 	 */
-	if (has_other_rmap) {
-		error = xfs_rmap_free(sc->tp, agf_bp, agno, agbno, 1,
+	if (!crosslinked)
+		xrep_reap_invalidate_extent(sc, fsbno, aglen);
+
+	if (crosslinked) {
+		error = xfs_rmap_free(sc->tp, agf_bp, agno, agbno, aglen,
 				rb->oinfo);
 	} else if (rb->resv == XFS_AG_RESV_AGFL) {
-		xrep_reap_invalidate_block(sc, fsbno);
 		error = xrep_put_freelist(sc, agbno);
 	} else {
 		/*
@@ -602,20 +604,94 @@ xrep_reap_block(
 		 * every 100 or so EFIs so that we don't exceed the log
 		 * reservation.
 		 */
-		xrep_reap_invalidate_block(sc, fsbno);
-		__xfs_bmap_add_free(sc->tp, fsbno, 1, rb->oinfo, false);
+		__xfs_bmap_add_free(sc->tp, fsbno, aglen, rb->oinfo, false);
 		rb->deferred++;
 		need_roll = rb->deferred > 100;
 	}
-	if (agf_bp != sc->sa.agf_bp)
-		xfs_trans_brelse(sc->tp, agf_bp);
 	if (error || !need_roll)
 		return error;
 
 	rb->deferred = 0;
 	return xrep_roll_trans(sc);
+}
 
-out_free:
+/*
+ * Break a bitmap extent into sub-extents by fate, and dispose of each
+ * sub-extent separately.
+ */
+STATIC int
+xrep_reap_extent(
+	uint64_t		fsbno,
+	uint64_t		len,
+	void			*priv)
+{
+	struct xrep_reap_block	*rb = priv;
+	struct xfs_scrub	*sc = rb->sc;
+	struct xfs_btree_cur	*cur = NULL;
+	struct xfs_buf		*agf_bp = NULL;
+	xfs_agnumber_t		agno = XFS_FSB_TO_AGNO(sc->mp, fsbno);
+	xfs_agblock_t		agbno = XFS_FSB_TO_AGBNO(sc->mp, fsbno);
+	xfs_agblock_t		agbnext = agbno + len;
+	int			error = 0;
+
+	ASSERT(sc->ip != NULL || agno == sc->sa.agno);
+	ASSERT(len <= MAXEXTLEN);
+
+	/*
+	 * If we are repairing per-inode metadata, we need to read in the AGF
+	 * buffer.  Otherwise, we're repairing a per-AG structure, so reuse
+	 * the AGF buffer that the setup functions already grabbed.
+	 */
+	if (sc->ip)
+		error = xfs_alloc_read_agf(sc->mp, sc->tp, agno, 0, &agf_bp);
+	else
+		agf_bp = sc->sa.agf_bp;
+
+	while (agbno < agbnext) {
+		xfs_agnumber_t	i_agbno;
+		bool		start_crosslinked;
+
+		cur = xfs_rmapbt_init_cursor(sc->mp, sc->tp, agf_bp, agno);
+		error = xfs_rmap_has_other_keys(cur, agbno, 1, rb->oinfo,
+				&start_crosslinked);
+		if (error)
+			goto out_cur;
+
+		/*
+		 * Figure out the longest run of blocks that we can dispose of
+		 * with a single call.  Cross-linked blocks should have their
+		 * reverse mappings removed, but single-owner extents can be
+		 * freed.  AGFL blocks can only be put back one at a time.
+		 */
+		for (i_agbno = agbno + 1;
+		     i_agbno < agbnext && rb->resv != XFS_AG_RESV_AGFL;
+		     i_agbno++) {
+			bool	crosslinked;
+
+			error = xfs_rmap_has_other_keys(cur, i_agbno, 1,
+					rb->oinfo, &crosslinked);
+			if (error)
+				goto out_cur;
+			if (crosslinked != start_crosslinked)
+				break;
+		}
+
+		/* Free the cursor because we can roll the transaction. */
+		xfs_btree_del_cursor(cur, 0);
+		cur = NULL;
+
+		error = xrep_reap_ag_extent(rb, agf_bp, agno, agbno,
+				i_agbno - agbno, start_crosslinked);
+		if (error)
+			goto out_agf;
+
+		agbno = i_agbno;
+	}
+
+out_cur:
+	if (cur)
+		xfs_btree_del_cursor(cur, error);
+out_agf:
 	if (agf_bp != sc->sa.agf_bp)
 		xfs_trans_brelse(sc->tp, agf_bp);
 	return error;
@@ -638,7 +714,7 @@ xrep_reap_extents(
 
 	ASSERT(xfs_sb_version_hasrmapbt(&sc->mp->m_sb));
 
-	error = xbitmap_walk_bits(bitmap, xrep_reap_block, &rb);
+	error = xbitmap_walk(bitmap, xrep_reap_extent, &rb);
 	if (error || rb.deferred == 0)
 		return error;
 
