@@ -689,47 +689,44 @@ xfs_inode_inherit_flags(
 	struct xfs_inode	*ip,
 	const struct xfs_inode	*pip)
 {
-	unsigned int		di_flags = 0;
 	xfs_failaddr_t		failaddr;
 	umode_t			mode = VFS_I(ip)->i_mode;
 
 	if (S_ISDIR(mode)) {
 		if (pip->i_diflags & XFS_DIFLAG_RTINHERIT)
-			di_flags |= XFS_DIFLAG_RTINHERIT;
+			ip->i_diflags |= XFS_DIFLAG_RTINHERIT;
 		if (pip->i_diflags & XFS_DIFLAG_EXTSZINHERIT) {
-			di_flags |= XFS_DIFLAG_EXTSZINHERIT;
+			ip->i_diflags |= XFS_DIFLAG_EXTSZINHERIT;
 			ip->i_extsize = pip->i_extsize;
 		}
 		if (pip->i_diflags & XFS_DIFLAG_PROJINHERIT)
-			di_flags |= XFS_DIFLAG_PROJINHERIT;
+			ip->i_diflags |= XFS_DIFLAG_PROJINHERIT;
 	} else if (S_ISREG(mode)) {
 		if ((pip->i_diflags & XFS_DIFLAG_RTINHERIT) &&
 		    xfs_sb_version_hasrealtime(&ip->i_mount->m_sb))
-			di_flags |= XFS_DIFLAG_REALTIME;
+			ip->i_diflags |= XFS_DIFLAG_REALTIME;
 		if (pip->i_diflags & XFS_DIFLAG_EXTSZINHERIT) {
-			di_flags |= XFS_DIFLAG_EXTSIZE;
+			ip->i_diflags |= XFS_DIFLAG_EXTSIZE;
 			ip->i_extsize = pip->i_extsize;
 		}
 	}
 	if ((pip->i_diflags & XFS_DIFLAG_NOATIME) &&
 	    xfs_inherit_noatime)
-		di_flags |= XFS_DIFLAG_NOATIME;
+		ip->i_diflags |= XFS_DIFLAG_NOATIME;
 	if ((pip->i_diflags & XFS_DIFLAG_NODUMP) &&
 	    xfs_inherit_nodump)
-		di_flags |= XFS_DIFLAG_NODUMP;
+		ip->i_diflags |= XFS_DIFLAG_NODUMP;
 	if ((pip->i_diflags & XFS_DIFLAG_SYNC) &&
 	    xfs_inherit_sync)
-		di_flags |= XFS_DIFLAG_SYNC;
+		ip->i_diflags |= XFS_DIFLAG_SYNC;
 	if ((pip->i_diflags & XFS_DIFLAG_NOSYMLINKS) &&
 	    xfs_inherit_nosymlinks)
-		di_flags |= XFS_DIFLAG_NOSYMLINKS;
+		ip->i_diflags |= XFS_DIFLAG_NOSYMLINKS;
 	if ((pip->i_diflags & XFS_DIFLAG_NODEFRAG) &&
 	    xfs_inherit_nodefrag)
-		di_flags |= XFS_DIFLAG_NODEFRAG;
+		ip->i_diflags |= XFS_DIFLAG_NODEFRAG;
 	if (pip->i_diflags & XFS_DIFLAG_FILESTREAM)
-		di_flags |= XFS_DIFLAG_FILESTREAM;
-
-	ip->i_diflags |= di_flags;
+		ip->i_diflags |= XFS_DIFLAG_FILESTREAM;
 
 	/*
 	 * Inode verifiers on older kernels only check that the extent size
