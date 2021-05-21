@@ -656,6 +656,7 @@ xfs_inode_validate_extsize(
 	bool				rt_flag;
 	bool				hint_flag;
 	bool				inherit_flag;
+	bool				check_rtinherit_align;
 	uint32_t			extsize_bytes;
 	uint32_t			blocksize_bytes;
 
@@ -684,9 +685,16 @@ xfs_inode_validate_extsize(
 	 * corruption errors when reading an existing filesystem.  Instead, we
 	 * permit the misconfiguration to pass through the verifiers so that
 	 * callers of this function can correct and mitigate externally.
+	 *
+	 * Enforce the rextsize alignment check for all RTINHERIT/EXTSZINHERIT
+	 * files if metadata directories are enabled, since it was merged after
+	 * the discovery of the insufficient alignment validation.
 	 */
+	check_rtinherit_align = xfs_sb_version_hasmetadir(&mp->m_sb) &&
+				(flags & XFS_DIFLAG_RTINHERIT) &&
+				inherit_flag;
 
-	if (rt_flag)
+	if (rt_flag || check_rtinherit_align)
 		blocksize_bytes = XFS_FSB_TO_B(mp, mp->m_sb.sb_rextsize);
 	else
 		blocksize_bytes = mp->m_sb.sb_blocksize;
