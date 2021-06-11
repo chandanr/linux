@@ -23,6 +23,7 @@
 #include "xfs_dquot.h"
 #include "xfs_reflink.h"
 #include "xfs_ialloc.h"
+#include "xfs_ag.h"
 
 #include <linux/iversion.h>
 
@@ -1438,14 +1439,6 @@ xfs_inode_clear_cowblocks_tag(
 	trace_xfs_inode_clear_cowblocks_tag(ip);
 	return xfs_blockgc_clear_iflag(ip, XFS_ICOWBLOCKS);
 }
-
-#define for_each_perag_tag(mp, next_agno, pag, tag) \
-	for ((next_agno) = 0, (pag) = xfs_perag_get_tag((mp), 0, (tag)); \
-		(pag) != NULL; \
-		(next_agno) = (pag)->pag_agno + 1, \
-		xfs_perag_put(pag), \
-		(pag) = xfs_perag_get_tag((mp), (next_agno), (tag)))
-
 
 /* Disable post-EOF and CoW block auto-reclamation. */
 void
