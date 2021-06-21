@@ -453,6 +453,9 @@ xfs_gc_delay_ms(
 		}
 #endif
 		break;
+	case XFS_ICI_BLOCKGC_TAG:
+		default_ms = xfs_blockgc_secs * 1000;
+		break;
 	default:
 		ASSERT(0);
 		return 0;
@@ -480,7 +483,8 @@ xfs_gc_delay_ms(
  */
 static inline void
 xfs_blockgc_queue(
-	struct xfs_perag	*pag)
+	struct xfs_perag	*pag,
+	struct xfs_inode	*ip)
 {
 	struct xfs_mount        *mp = pag->pag_mount;
 
@@ -489,8 +493,9 @@ xfs_blockgc_queue(
 
 	rcu_read_lock();
 	if (radix_tree_tagged(&pag->pag_ici_root, XFS_ICI_BLOCKGC_TAG)) {
-		unsigned int	delay = xfs_blockgc_secs * 1000;
+		unsigned int	delay;
 
+		delay = xfs_gc_delay_ms(pag, ip, XFS_ICI_BLOCKGC_TAG);
 		trace_xfs_blockgc_queue(pag, delay);
 		queue_delayed_work(mp->m_gc_workqueue, &pag->pag_blockgc_work,
 				msecs_to_jiffies(delay));
@@ -545,6 +550,11 @@ xfs_gc_requeue_now(
 		dwork = &pag->pag_inodegc_work;
 		default_ms = xfs_inodegc_ms;
 		opflag_bit = XFS_OPFLAG_INODEGC_RUNNING_BIT;
+		break;
+	case XFS_ICI_BLOCKGC_TAG:
+		dwork = &pag->pag_blockgc_work;
+		default_ms = xfs_blockgc_secs * 1000;
+		opflag_bit = XFS_OPFLAG_BLOCKGC_RUNNING_BIT;
 		break;
 	default:
 		return;
@@ -604,7 +614,7 @@ xfs_perag_set_inode_tag(
 		xfs_reclaim_work_queue(mp);
 		break;
 	case XFS_ICI_BLOCKGC_TAG:
-		xfs_blockgc_queue(pag);
+		xfs_blockgc_queue(pag, ip);
 		break;
 	case XFS_ICI_INODEGC_TAG:
 		xfs_inodegc_queue(pag, ip);
@@ -1974,7 +1984,7 @@ xfs_blockgc_start(
 
 	trace_xfs_blockgc_start(mp, __return_address);
 	for_each_perag_tag(mp, agno, pag, XFS_ICI_BLOCKGC_TAG)
-		xfs_blockgc_queue(pag);
+		xfs_blockgc_queue(pag, NULL);
 }
 
 /* Don't try to run block gc on an inode that's in any of these states. */
@@ -2065,7 +2075,7 @@ xfs_blockgc_worker(
 	if (error)
 		xfs_info(mp, "AG %u preallocation gc worker failed, err=%d",
 				pag->pag_agno, error);
-	xfs_blockgc_queue(pag);
+	xfs_blockgc_queue(pag, NULL);
 }
 
 /*
