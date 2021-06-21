@@ -154,6 +154,13 @@ typedef struct xfs_mount {
 	uint8_t			m_rt_sick;
 
 	/*
+	 * This atomic bitset controls flags that alter the behavior of the
+	 * filesystem.  Use only the atomic bit helper functions here; see
+	 * XFS_OPFLAG_* for information about the actual flags.
+	 */
+	unsigned long		m_opflags;
+
+	/*
 	 * End of read-mostly variables. Frequently written variables and locks
 	 * should be placed below this comment from now on. The first variable
 	 * here is marked as cacheline aligned so they it is separated from
@@ -183,6 +190,7 @@ typedef struct xfs_mount {
 	uint64_t		m_resblks_avail;/* available reserved blocks */
 	uint64_t		m_resblks_save;	/* reserved blks @ remount,ro */
 	struct delayed_work	m_reclaim_work;	/* background inode reclaim */
+	struct delayed_work	m_inodegc_work; /* background inode inactive */
 	struct xfs_kobj		m_kobj;
 	struct xfs_kobj		m_error_kobj;
 	struct xfs_kobj		m_error_meta_kobj;
@@ -256,6 +264,19 @@ typedef struct xfs_mount {
 #define XFS_MOUNT_NOATTR2	(1ULL << 25)	/* disable use of attr2 format */
 #define XFS_MOUNT_DAX_ALWAYS	(1ULL << 26)
 #define XFS_MOUNT_DAX_NEVER	(1ULL << 27)
+
+/*
+ * Operation flags -- each entry here is a bit index into m_opflags and is
+ * not itself a flag value.  Use the atomic bit functions to access.
+ */
+enum xfs_opflag_bits {
+	/*
+	 * If set, background inactivation worker threads will be scheduled to
+	 * process queued inodegc work.  If not, queued inodes remain in memory
+	 * waiting to be processed.
+	 */
+	XFS_OPFLAG_INODEGC_RUNNING_BIT	= 0,
+};
 
 /*
  * Max and min values for mount-option defined I/O
