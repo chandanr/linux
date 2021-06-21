@@ -213,6 +213,40 @@ TRACE_EVENT(xfs_inodegc_requeue_mempressure,
 		  __entry->caller_ip)
 );
 
+TRACE_EVENT(xfs_gc_delay_dquot,
+	TP_PROTO(struct xfs_dquot *dqp, unsigned int tag, unsigned int shift),
+	TP_ARGS(dqp, tag, shift),
+	TP_STRUCT__entry(
+		__field(dev_t, dev)
+		__field(u32, id)
+		__field(xfs_dqtype_t, type)
+		__field(unsigned int, tag)
+		__field(unsigned int, shift)
+		__field(unsigned long long, reserved)
+		__field(unsigned long long, hi_mark)
+		__field(unsigned long long, lo_mark)
+	),
+	TP_fast_assign(
+		__entry->dev = dqp->q_mount->m_super->s_dev;
+		__entry->id = dqp->q_id;
+		__entry->type = dqp->q_type;
+		__entry->reserved = dqp->q_blk.reserved;
+		__entry->hi_mark = dqp->q_prealloc_hi_wmark;
+		__entry->lo_mark = dqp->q_prealloc_lo_wmark;
+		__entry->tag = tag;
+		__entry->shift = shift;
+	),
+	TP_printk("dev %d:%d tag %u shift %u dqid 0x%x dqtype %s reserved %llu hi %llu lo %llu",
+		  MAJOR(__entry->dev), MINOR(__entry->dev),
+		  __entry->tag,
+		  __entry->shift,
+		  __entry->id,
+		  __print_flags(__entry->type, "|", XFS_DQTYPE_STRINGS),
+		  __entry->reserved,
+		  __entry->hi_mark,
+		  __entry->lo_mark)
+);
+
 TRACE_EVENT(xfs_gc_delay_fdblocks,
 	TP_PROTO(struct xfs_mount *mp, unsigned int tag, unsigned int shift),
 	TP_ARGS(mp, tag, shift),

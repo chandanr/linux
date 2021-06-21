@@ -223,6 +223,73 @@ xfs_reclaim_work_queue(
 }
 
 /*
+ * Scale down the background work delay if we're close to a quota limit.
+ * Similar to the way that we throttle preallocations, we halve the delay time
+ * for every low free space threshold that isn't met, and we zero it if we're
+ * over the hard limit.  Return value is in ms.
+ */
+static inline unsigned int
+xfs_gc_delay_dquot(
+	struct xfs_inode	*ip,
+	xfs_dqtype_t		type,
+	unsigned int		tag,
+	unsigned int		delay_ms)
+{
+	struct xfs_dquot	*dqp;
+	int64_t			freesp;
+	unsigned int		shift = 0;
+
+	if (!ip)
+		goto out;
+
+	/*
+	 * Leave the delay untouched if there are no quota limits to enforce.
+	 * These comparisons are done locklessly because at worst we schedule
+	 * background work sooner than necessary.
+	 */
+	dqp = xfs_inode_dquot(ip, type);
+	if (!dqp || !xfs_dquot_is_enforced(dqp))
+		goto out;
+
+	if (xfs_dquot_res_over_limits(&dqp->q_ino) ||
+	    xfs_dquot_res_over_limits(&dqp->q_rtb)) {
+		trace_xfs_gc_delay_dquot(dqp, tag, 32);
+		return 0;
+	}
+
+	/* no hi watermark, no throttle */
+	if (!dqp->q_prealloc_hi_wmark)
+		goto out;
+
+	/* under the lo watermark, no throttle */
+	if (dqp->q_blk.reserved < dqp->q_prealloc_lo_wmark)
+		goto out;
+
+	/* If we're over the hard limit, run immediately. */
+	if (dqp->q_blk.reserved >= dqp->q_prealloc_hi_wmark) {
+		trace_xfs_gc_delay_dquot(dqp, tag, 32);
+		return 0;
+	}
+
+	/* Scale down the delay if we're close to the soft limits. */
+	freesp = dqp->q_prealloc_hi_wmark - dqp->q_blk.reserved;
+	if (freesp < dqp->q_low_space[XFS_QLOWSP_5_PCNT]) {
+		shift = 2;
+		if (freesp < dqp->q_low_space[XFS_QLOWSP_3_PCNT])
+			shift += 2;
+		if (freesp < dqp->q_low_space[XFS_QLOWSP_1_PCNT])
+			shift += 2;
+	}
+
+	if (shift)
+		trace_xfs_gc_delay_dquot(dqp, tag, shift);
+
+	delay_ms >>= shift;
+out:
+	return delay_ms;
+}
+
+/*
  * Scale down the background work delay if we're low on free space.  Similar to
  * the way that we throttle preallocations, we halve the delay time for every
  * low free space threshold that isn't met.  Return value is in ms.
@@ -257,14 +324,17 @@ xfs_gc_delay_freesp(
 
 /*
  * Compute the lag between scheduling and executing some kind of background
- * garbage collection work.  Return value is in ms.
+ * garbage collection work.  Return value is in ms.  If an inode is passed in,
+ * its dquots will be considered in the lag computation.
  */
 static inline unsigned int
 xfs_gc_delay_ms(
 	struct xfs_mount	*mp,
+	struct xfs_inode	*ip,
 	unsigned int		tag)
 {
 	unsigned int		default_ms;
+	unsigned int		udelay, gdelay, pdelay, fdelay;
 
 	switch (tag) {
 	case XFS_ICI_INODEGC_TAG:
@@ -282,7 +352,12 @@ xfs_gc_delay_ms(
 		return 0;
 	}
 
-	return xfs_gc_delay_freesp(mp, tag, default_ms);
+	udelay = xfs_gc_delay_dquot(ip, XFS_DQTYPE_USER, tag, default_ms);
+	gdelay = xfs_gc_delay_dquot(ip, XFS_DQTYPE_GROUP, tag, default_ms);
+	pdelay = xfs_gc_delay_dquot(ip, XFS_DQTYPE_PROJ, tag, default_ms);
+	fdelay = xfs_gc_delay_freesp(mp, tag, default_ms);
+
+	return min(min(udelay, gdelay), min(pdelay, fdelay));
 }
 
 /*
@@ -318,7 +393,7 @@ xfs_inodegc_queue(
 	if (radix_tree_tagged(&mp->m_perag_tree, XFS_ICI_INODEGC_TAG)) {
 		unsigned int	delay;
 
-		delay = xfs_gc_delay_ms(mp, XFS_ICI_INODEGC_TAG);
+		delay = xfs_gc_delay_ms(mp, ip, XFS_ICI_INODEGC_TAG);
 		trace_xfs_inodegc_queue(mp, delay);
 		queue_delayed_work(mp->m_gc_workqueue, &mp->m_inodegc_work,
 				msecs_to_jiffies(delay));
@@ -333,6 +408,7 @@ xfs_inodegc_queue(
 static void
 xfs_gc_requeue_now(
 	struct xfs_mount	*mp,
+	struct xfs_inode	*ip,
 	unsigned int		tag)
 {
 	struct delayed_work	*dwork;
@@ -357,7 +433,7 @@ xfs_gc_requeue_now(
 	if (!radix_tree_tagged(&mp->m_perag_tree, tag))
 		goto unlock;
 
-	if (xfs_gc_delay_ms(mp, tag) == default_ms)
+	if (xfs_gc_delay_ms(mp, ip, tag) == default_ms)
 		goto unlock;
 
 	trace_xfs_gc_requeue_now(mp, tag);
@@ -388,7 +464,7 @@ xfs_perag_set_inode_tag(
 		pag->pag_ici_needs_inactive++;
 
 	if (was_tagged) {
-		xfs_gc_requeue_now(mp, tag);
+		xfs_gc_requeue_now(mp, ip, tag);
 		return;
 	}
 
