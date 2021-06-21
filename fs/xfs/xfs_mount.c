@@ -127,6 +127,7 @@ __xfs_free_perag(
 	struct xfs_perag *pag = container_of(head, struct xfs_perag, rcu_head);
 
 	ASSERT(!delayed_work_pending(&pag->pag_blockgc_work));
+	ASSERT(!delayed_work_pending(&pag->pag_inodegc_work));
 	ASSERT(atomic_read(&pag->pag_ref) == 0);
 	kmem_free(pag);
 }
@@ -149,7 +150,9 @@ xfs_free_perag(
 		ASSERT(atomic_read(&pag->pag_ref) == 0);
 		ASSERT(pag->pag_ici_needs_inactive == 0);
 
+		unregister_shrinker(&pag->pag_inodegc_shrink);
 		cancel_delayed_work_sync(&pag->pag_blockgc_work);
+		cancel_delayed_work_sync(&pag->pag_inodegc_work);
 		xfs_iunlink_destroy(pag);
 		xfs_buf_hash_destroy(pag);
 		call_rcu(&pag->rcu_head, __xfs_free_perag);
@@ -206,11 +209,17 @@ xfs_initialize_perag(
 		pag->pag_mount = mp;
 		spin_lock_init(&pag->pag_ici_lock);
 		INIT_DELAYED_WORK(&pag->pag_blockgc_work, xfs_blockgc_worker);
+		INIT_DELAYED_WORK(&pag->pag_inodegc_work, xfs_inodegc_worker);
+		atomic_set(&pag->pag_inodegc_reclaim, 0);
 		INIT_RADIX_TREE(&pag->pag_ici_root, GFP_ATOMIC);
+
+		error = xfs_inodegc_register_shrinker(pag);
+		if (error)
+			goto out_free_pag;
 
 		error = xfs_buf_hash_init(pag);
 		if (error)
-			goto out_free_pag;
+			goto out_inodegc_shrink;
 		init_waitqueue_head(&pag->pagb_wait);
 		spin_lock_init(&pag->pagb_lock);
 		pag->pagb_count = 0;
@@ -249,6 +258,8 @@ xfs_initialize_perag(
 
 out_hash_destroy:
 	xfs_buf_hash_destroy(pag);
+out_inodegc_shrink:
+	unregister_shrinker(&pag->pag_inodegc_shrink);
 out_free_pag:
 	kmem_free(pag);
 out_unwind_new_pags:
@@ -895,10 +906,6 @@ xfs_mountfs(
 		goto out_free_perag;
 	}
 
-	error = xfs_inodegc_register_shrinker(mp);
-	if (error)
-		goto out_fail_wait;
-
 	/*
 	 * Log's mount-time initialization. The first part of recovery can place
 	 * some items on the AIL, to be handled when recovery is finished or
@@ -909,7 +916,7 @@ xfs_mountfs(
 			      XFS_FSB_TO_BB(mp, sbp->sb_logblocks));
 	if (error) {
 		xfs_warn(mp, "log mount failed");
-		goto out_inodegc_shrink;
+		goto out_fail_wait;
 	}
 
 	/* Make sure the summary counts are ok. */
@@ -1105,8 +1112,6 @@ xfs_mountfs(
 	xfs_unmount_flush_inodes(mp);
  out_log_dealloc:
 	xfs_log_mount_cancel(mp);
- out_inodegc_shrink:
-	unregister_shrinker(&mp->m_inodegc_shrink);
  out_fail_wait:
 	if (mp->m_logdev_targp && mp->m_logdev_targp != mp->m_ddev_targp)
 		xfs_buftarg_drain(mp->m_logdev_targp);
@@ -1187,7 +1192,6 @@ xfs_unmountfs(
 #if defined(DEBUG)
 	xfs_errortag_clearall(mp);
 #endif
-	unregister_shrinker(&mp->m_inodegc_shrink);
 	xfs_free_perag(mp);
 
 	xfs_errortag_del(mp);

@@ -191,8 +191,6 @@ typedef struct xfs_mount {
 	uint64_t		m_resblks_avail;/* available reserved blocks */
 	uint64_t		m_resblks_save;	/* reserved blks @ remount,ro */
 	struct delayed_work	m_reclaim_work;	/* background inode reclaim */
-	struct delayed_work	m_inodegc_work; /* background inode inactive */
-	struct shrinker		m_inodegc_shrink;
 	struct xfs_kobj		m_kobj;
 	struct xfs_kobj		m_error_kobj;
 	struct xfs_kobj		m_error_meta_kobj;
@@ -219,12 +217,6 @@ typedef struct xfs_mount {
 	 */
 	uint32_t		m_generation;
 	struct mutex		m_growlock;	/* growfs mutex */
-
-	/*
-	 * How many times has the memory shrinker poked us since the last time
-	 * inodegc was queued?
-	 */
-	atomic_t		m_inodegc_reclaim;
 
 #ifdef DEBUG
 	/*
@@ -413,6 +405,16 @@ typedef struct xfs_perag {
 	 * or have some other means to control concurrency.
 	 */
 	struct rhashtable	pagi_unlinked_hash;
+
+	/*
+	 * How many times has the memory shrinker poked us since the last time
+	 * inodegc was queued?
+	 */
+	atomic_t		pag_inodegc_reclaim;
+
+	/* background inode inactivation */
+	struct delayed_work	pag_inodegc_work;
+	struct shrinker		pag_inodegc_shrink;
 } xfs_perag_t;
 
 static inline struct xfs_ag_resv *

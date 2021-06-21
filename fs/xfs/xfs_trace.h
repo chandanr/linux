@@ -123,7 +123,7 @@ TRACE_EVENT(xlog_intent_recovery_failed,
 		  __entry->error, __entry->function)
 );
 
-DECLARE_EVENT_CLASS(xfs_perag_class,
+DECLARE_EVENT_CLASS(xfs_perag_ref_class,
 	TP_PROTO(struct xfs_mount *mp, xfs_agnumber_t agno, int refcount,
 		 unsigned long caller_ip),
 	TP_ARGS(mp, agno, refcount, caller_ip),
@@ -147,7 +147,7 @@ DECLARE_EVENT_CLASS(xfs_perag_class,
 );
 
 #define DEFINE_PERAG_REF_EVENT(name)	\
-DEFINE_EVENT(xfs_perag_class, name,	\
+DEFINE_EVENT(xfs_perag_ref_class, name,	\
 	TP_PROTO(struct xfs_mount *mp, xfs_agnumber_t agno, int refcount,	\
 		 unsigned long caller_ip),					\
 	TP_ARGS(mp, agno, refcount, caller_ip))
@@ -189,29 +189,56 @@ DEFINE_EVENT(xfs_fs_class, name,					\
 DEFINE_FS_EVENT(xfs_inodegc_flush);
 DEFINE_FS_EVENT(xfs_inodegc_start);
 DEFINE_FS_EVENT(xfs_inodegc_stop);
-DEFINE_FS_EVENT(xfs_inodegc_worker);
-DEFINE_FS_EVENT(xfs_inodegc_throttled);
 DEFINE_FS_EVENT(xfs_fs_sync_fs);
 DEFINE_FS_EVENT(xfs_inodegc_delay_mempressure);
 
 TRACE_EVENT(xfs_inodegc_requeue_mempressure,
-	TP_PROTO(struct xfs_mount *mp, unsigned long nr, void *caller_ip),
-	TP_ARGS(mp, nr, caller_ip),
+	TP_PROTO(struct xfs_perag *pag, unsigned long nr, void *caller_ip),
+	TP_ARGS(pag, nr, caller_ip),
 	TP_STRUCT__entry(
 		__field(dev_t, dev)
+		__field(xfs_agnumber_t, agno)
 		__field(unsigned long, nr)
 		__field(void *, caller_ip)
 	),
 	TP_fast_assign(
-		__entry->dev = mp->m_super->s_dev;
+		__entry->dev = pag->pag_mount->m_super->s_dev;
+		__entry->agno = pag->pag_agno;
 		__entry->nr = nr;
 		__entry->caller_ip = caller_ip;
 	),
-	TP_printk("dev %d:%d nr_to_scan %lu caller %pS",
+	TP_printk("dev %d:%d agno %u nr_to_scan %lu caller %pS",
 		  MAJOR(__entry->dev), MINOR(__entry->dev),
+		  __entry->agno,
 		  __entry->nr,
 		  __entry->caller_ip)
 );
+
+DECLARE_EVENT_CLASS(xfs_perag_class,
+	TP_PROTO(struct xfs_perag *pag, void *caller_ip),
+	TP_ARGS(pag, caller_ip),
+	TP_STRUCT__entry(
+		__field(dev_t, dev)
+		__field(xfs_agnumber_t, agno)
+		__field(void *, caller_ip)
+	),
+	TP_fast_assign(
+		__entry->dev = pag->pag_mount->m_super->s_dev;
+		__entry->agno = pag->pag_agno;
+		__entry->caller_ip = caller_ip;
+	),
+	TP_printk("dev %d:%d agno %u caller %pS",
+		  MAJOR(__entry->dev), MINOR(__entry->dev),
+		  __entry->agno,
+		  __entry->caller_ip)
+);
+
+#define DEFINE_PERAG_EVENT(name)	\
+DEFINE_EVENT(xfs_perag_class, name,					\
+	TP_PROTO(struct xfs_perag *pag, void *caller_ip), \
+	TP_ARGS(pag, caller_ip))
+DEFINE_PERAG_EVENT(xfs_inodegc_throttled);
+DEFINE_PERAG_EVENT(xfs_inodegc_worker);
 
 TRACE_EVENT(xfs_gc_delay_dquot,
 	TP_PROTO(struct xfs_dquot *dqp, unsigned int tag, unsigned int shift),
@@ -292,55 +319,64 @@ TRACE_EVENT(xfs_gc_delay_frextents,
 );
 
 DECLARE_EVENT_CLASS(xfs_gc_queue_class,
-	TP_PROTO(struct xfs_mount *mp, unsigned int delay_ms),
-	TP_ARGS(mp, delay_ms),
+	TP_PROTO(struct xfs_perag *pag, unsigned int delay_ms),
+	TP_ARGS(pag, delay_ms),
 	TP_STRUCT__entry(
 		__field(dev_t, dev)
+		__field(xfs_agnumber_t, agno)
 		__field(unsigned int, delay_ms)
 	),
 	TP_fast_assign(
-		__entry->dev = mp->m_super->s_dev;
+		__entry->dev = pag->pag_mount->m_super->s_dev;
+		__entry->agno = pag->pag_agno;
 		__entry->delay_ms = delay_ms;
 	),
-	TP_printk("dev %d:%d delay_ms %u",
+	TP_printk("dev %d:%d agno %u delay_ms %u",
 		  MAJOR(__entry->dev), MINOR(__entry->dev),
+		  __entry->agno,
 		  __entry->delay_ms)
 );
 #define DEFINE_GC_QUEUE_EVENT(name)	\
 DEFINE_EVENT(xfs_gc_queue_class, name,	\
-	TP_PROTO(struct xfs_mount *mp, unsigned int delay_ms),	\
-	TP_ARGS(mp, delay_ms))
+	TP_PROTO(struct xfs_perag *pag, unsigned int delay_ms),	\
+	TP_ARGS(pag, delay_ms))
 DEFINE_GC_QUEUE_EVENT(xfs_inodegc_queue);
 
 TRACE_EVENT(xfs_gc_requeue_now,
-	TP_PROTO(struct xfs_mount *mp, unsigned int tag),
-	TP_ARGS(mp, tag),
+	TP_PROTO(struct xfs_perag *pag, unsigned int tag),
+	TP_ARGS(pag, tag),
 	TP_STRUCT__entry(
 		__field(dev_t, dev)
+		__field(xfs_agnumber_t, agno)
 		__field(unsigned int, tag)
 	),
 	TP_fast_assign(
-		__entry->dev = mp->m_super->s_dev;
+		__entry->dev = pag->pag_mount->m_super->s_dev;
+		__entry->agno = pag->pag_agno;
 		__entry->tag = tag;
 	),
-	TP_printk("dev %d:%d tag %u",
+	TP_printk("dev %d:%d agno %u tag %u",
 		  MAJOR(__entry->dev), MINOR(__entry->dev),
+		  __entry->agno,
 		  __entry->tag)
 );
 
 TRACE_EVENT(xfs_inodegc_throttle_mempressure,
-	TP_PROTO(struct xfs_mount *mp),
-	TP_ARGS(mp),
+	TP_PROTO(struct xfs_perag *pag),
+	TP_ARGS(pag),
 	TP_STRUCT__entry(
 		__field(dev_t, dev)
+		__field(xfs_agnumber_t, agno)
 		__field(int, votes)
 	),
 	TP_fast_assign(
-		__entry->dev = mp->m_super->s_dev;
-		__entry->votes = atomic_read(&mp->m_inodegc_reclaim);
+		__entry->dev = pag->pag_mount->m_super->s_dev;
+		__entry->agno = pag->pag_agno;
+		__entry->votes = atomic_read(&pag->pag_inodegc_reclaim);
 	),
-	TP_printk("dev %d:%d votes %d",
+	TP_printk("dev %d:%d agno %u votes %d",
 		  MAJOR(__entry->dev), MINOR(__entry->dev),
+		  __entry->agno,
 		  __entry->votes)
 );
 
