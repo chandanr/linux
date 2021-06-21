@@ -213,6 +213,28 @@ TRACE_EVENT(xfs_inodegc_requeue_mempressure,
 		  __entry->caller_ip)
 );
 
+TRACE_EVENT(xfs_gc_delay_fdblocks,
+	TP_PROTO(struct xfs_mount *mp, unsigned int tag, unsigned int shift),
+	TP_ARGS(mp, tag, shift),
+	TP_STRUCT__entry(
+		__field(dev_t, dev)
+		__field(unsigned long long, fdblocks)
+		__field(unsigned int, tag)
+		__field(unsigned int, shift)
+	),
+	TP_fast_assign(
+		__entry->dev = mp->m_super->s_dev;
+		__entry->fdblocks = percpu_counter_read(&mp->m_fdblocks);
+		__entry->tag = tag;
+		__entry->shift = shift;
+	),
+	TP_printk("dev %d:%d tag %u shift %u fdblocks %llu",
+		  MAJOR(__entry->dev), MINOR(__entry->dev),
+		  __entry->tag,
+		  __entry->shift,
+		  __entry->fdblocks)
+);
+
 DECLARE_EVENT_CLASS(xfs_gc_queue_class,
 	TP_PROTO(struct xfs_mount *mp, unsigned int delay_ms),
 	TP_ARGS(mp, delay_ms),
@@ -233,6 +255,22 @@ DEFINE_EVENT(xfs_gc_queue_class, name,	\
 	TP_PROTO(struct xfs_mount *mp, unsigned int delay_ms),	\
 	TP_ARGS(mp, delay_ms))
 DEFINE_GC_QUEUE_EVENT(xfs_inodegc_queue);
+
+TRACE_EVENT(xfs_gc_requeue_now,
+	TP_PROTO(struct xfs_mount *mp, unsigned int tag),
+	TP_ARGS(mp, tag),
+	TP_STRUCT__entry(
+		__field(dev_t, dev)
+		__field(unsigned int, tag)
+	),
+	TP_fast_assign(
+		__entry->dev = mp->m_super->s_dev;
+		__entry->tag = tag;
+	),
+	TP_printk("dev %d:%d tag %u",
+		  MAJOR(__entry->dev), MINOR(__entry->dev),
+		  __entry->tag)
+);
 
 TRACE_EVENT(xfs_inodegc_throttle_mempressure,
 	TP_PROTO(struct xfs_mount *mp),

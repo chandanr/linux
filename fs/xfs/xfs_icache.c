@@ -223,6 +223,39 @@ xfs_reclaim_work_queue(
 }
 
 /*
+ * Scale down the background work delay if we're low on free space.  Similar to
+ * the way that we throttle preallocations, we halve the delay time for every
+ * low free space threshold that isn't met.  Return value is in ms.
+ */
+static inline unsigned int
+xfs_gc_delay_freesp(
+	struct xfs_mount	*mp,
+	unsigned int		tag,
+	unsigned int		delay_ms)
+{
+	int64_t			freesp;
+	unsigned int		shift = 0;
+
+	freesp = percpu_counter_read_positive(&mp->m_fdblocks);
+	if (freesp < mp->m_low_space[XFS_LOWSP_5_PCNT]) {
+		shift = 2;
+		if (freesp < mp->m_low_space[XFS_LOWSP_4_PCNT])
+			shift++;
+		if (freesp < mp->m_low_space[XFS_LOWSP_3_PCNT])
+			shift++;
+		if (freesp < mp->m_low_space[XFS_LOWSP_2_PCNT])
+			shift++;
+		if (freesp < mp->m_low_space[XFS_LOWSP_1_PCNT])
+			shift++;
+	}
+
+	if (shift)
+		trace_xfs_gc_delay_fdblocks(mp, tag, shift);
+
+	return delay_ms >> shift;
+}
+
+/*
  * Compute the lag between scheduling and executing some kind of background
  * garbage collection work.  Return value is in ms.
  */
@@ -249,7 +282,7 @@ xfs_gc_delay_ms(
 		return 0;
 	}
 
-	return default_ms;
+	return xfs_gc_delay_freesp(mp, tag, default_ms);
 }
 
 /*
@@ -275,7 +308,8 @@ xfs_blockgc_queue(
  */
 static void
 xfs_inodegc_queue(
-	struct xfs_mount        *mp)
+	struct xfs_mount        *mp,
+	struct xfs_inode	*ip)
 {
 	if (!test_bit(XFS_OPFLAG_INODEGC_RUNNING_BIT, &mp->m_opflags))
 		return;
@@ -292,14 +326,55 @@ xfs_inodegc_queue(
 	rcu_read_unlock();
 }
 
+/*
+ * Reschedule the background inactivation worker immediately if space is
+ * getting tight and the worker hasn't started running yet.
+ */
+static void
+xfs_gc_requeue_now(
+	struct xfs_mount	*mp,
+	unsigned int		tag)
+{
+	struct delayed_work	*dwork;
+	unsigned int		opflag_bit;
+	unsigned int		default_ms;
+
+	switch (tag) {
+	case XFS_ICI_INODEGC_TAG:
+		dwork = &mp->m_inodegc_work;
+		default_ms = xfs_inodegc_ms;
+		opflag_bit = XFS_OPFLAG_INODEGC_RUNNING_BIT;
+		break;
+	default:
+		return;
+	}
+
+	if (!delayed_work_pending(dwork) ||
+	    !test_bit(opflag_bit, &mp->m_opflags))
+		return;
+
+	rcu_read_lock();
+	if (!radix_tree_tagged(&mp->m_perag_tree, tag))
+		goto unlock;
+
+	if (xfs_gc_delay_ms(mp, tag) == default_ms)
+		goto unlock;
+
+	trace_xfs_gc_requeue_now(mp, tag);
+	queue_delayed_work(mp->m_gc_workqueue, dwork, 0);
+unlock:
+	rcu_read_unlock();
+}
+
 /* Set a tag on both the AG incore inode tree and the AG radix tree. */
 static void
 xfs_perag_set_inode_tag(
 	struct xfs_perag	*pag,
-	xfs_agino_t		agino,
+	struct xfs_inode	*ip,
 	unsigned int		tag)
 {
 	struct xfs_mount	*mp = pag->pag_mount;
+	xfs_agino_t		agino = XFS_INO_TO_AGINO(mp, ip->i_ino);
 	bool			was_tagged;
 
 	lockdep_assert_held(&pag->pag_ici_lock);
@@ -312,8 +387,10 @@ xfs_perag_set_inode_tag(
 	else if (tag == XFS_ICI_INODEGC_TAG)
 		pag->pag_ici_needs_inactive++;
 
-	if (was_tagged)
+	if (was_tagged) {
+		xfs_gc_requeue_now(mp, tag);
 		return;
+	}
 
 	/* propagate the tag up into the perag radix tree */
 	spin_lock(&mp->m_perag_lock);
@@ -329,7 +406,7 @@ xfs_perag_set_inode_tag(
 		xfs_blockgc_queue(pag);
 		break;
 	case XFS_ICI_INODEGC_TAG:
-		xfs_inodegc_queue(mp);
+		xfs_inodegc_queue(mp, ip);
 		break;
 	}
 
@@ -495,7 +572,7 @@ xfs_inode_mark_reclaimable(
 		tag = XFS_ICI_RECLAIM_TAG;
 	}
 
-	xfs_perag_set_inode_tag(pag, XFS_INO_TO_AGINO(mp, ip->i_ino), tag);
+	xfs_perag_set_inode_tag(pag, ip, tag);
 
 	spin_unlock(&ip->i_flags_lock);
 	spin_unlock(&pag->pag_ici_lock);
@@ -1500,8 +1577,7 @@ xfs_blockgc_set_iflag(
 	pag = xfs_perag_get(mp, XFS_INO_TO_AGNO(mp, ip->i_ino));
 	spin_lock(&pag->pag_ici_lock);
 
-	xfs_perag_set_inode_tag(pag, XFS_INO_TO_AGINO(mp, ip->i_ino),
-			XFS_ICI_BLOCKGC_TAG);
+	xfs_perag_set_inode_tag(pag, ip, XFS_ICI_BLOCKGC_TAG);
 
 	spin_unlock(&pag->pag_ici_lock);
 	xfs_perag_put(pag);
@@ -1982,7 +2058,7 @@ xfs_inodegc_inactivate(
 	ip->i_flags |= XFS_IRECLAIMABLE;
 
 	xfs_perag_clear_inode_tag(pag, agino, XFS_ICI_INODEGC_TAG);
-	xfs_perag_set_inode_tag(pag, agino, XFS_ICI_RECLAIM_TAG);
+	xfs_perag_set_inode_tag(pag, ip, XFS_ICI_RECLAIM_TAG);
 
 	spin_unlock(&ip->i_flags_lock);
 	spin_unlock(&pag->pag_ici_lock);
@@ -2048,7 +2124,7 @@ xfs_inodegc_start(
 		return;
 
 	trace_xfs_inodegc_start(mp, __return_address);
-	xfs_inodegc_queue(mp);
+	xfs_inodegc_queue(mp, NULL);
 }
 
 /*
