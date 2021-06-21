@@ -231,8 +231,12 @@ xfs_gc_delay_ms(
 	struct xfs_mount	*mp,
 	unsigned int		tag)
 {
+	unsigned int		default_ms;
+
 	switch (tag) {
 	case XFS_ICI_INODEGC_TAG:
+		default_ms = xfs_inodegc_ms;
+
 		/* If we're in a shrinker, kick off the worker immediately. */
 		if (current->reclaim_state != NULL) {
 			trace_xfs_inodegc_delay_mempressure(mp,
@@ -245,7 +249,7 @@ xfs_gc_delay_ms(
 		return 0;
 	}
 
-	return 0;
+	return default_ms;
 }
 
 /*
