@@ -41,6 +41,8 @@
 #include <linux/fs_context.h>
 #include <linux/fs_parser.h>
 
+#define WANT_INODEGC_FLUSH_ON_STATFS
+
 static const struct super_operations xfs_super_operations;
 
 static struct kset *xfs_kset;		/* top-level xfs sysfs dir */
@@ -761,8 +763,10 @@ xfs_fs_statfs(
 	xfs_extlen_t		lsize;
 	int64_t			ffree;
 
+#ifdef WANT_INODEGC_FLUSH_ON_STATFS
 	/* Wait for whatever inactivations are in progress. */
 	xfs_inodegc_flush(mp);
+#endif
 
 	statp->f_type = XFS_SUPER_MAGIC;
 	statp->f_namelen = MAXNAMELEN - 1;
