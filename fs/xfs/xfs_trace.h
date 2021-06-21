@@ -193,6 +193,7 @@ DEFINE_FS_EVENT(xfs_fs_sync_fs);
 DEFINE_FS_EVENT(xfs_inodegc_delay_mempressure);
 DEFINE_FS_EVENT(xfs_blockgc_start);
 DEFINE_FS_EVENT(xfs_blockgc_stop);
+DEFINE_FS_EVENT(xfs_blockgc_flush_all);
 
 TRACE_EVENT(xfs_inodegc_requeue_mempressure,
 	TP_PROTO(struct xfs_perag *pag, unsigned long nr, void *caller_ip),
