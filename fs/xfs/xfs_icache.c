@@ -290,6 +290,47 @@ out:
 }
 
 /*
+ * Scale down the background work delay if we're low on free rt extents.
+ * Return value is in ms.
+ */
+static inline unsigned int
+xfs_gc_delay_freertx(
+	struct xfs_mount	*mp,
+	struct xfs_inode	*ip,
+	unsigned int		tag,
+	unsigned int		delay_ms)
+{
+	int64_t			freertx;
+	unsigned int		shift = 0;
+
+	if (ip && !XFS_IS_REALTIME_INODE(ip))
+		return delay_ms;
+	if (!xfs_sb_version_hasrealtime(&mp->m_sb))
+		return delay_ms;
+
+	spin_lock(&mp->m_sb_lock);
+	freertx = mp->m_sb.sb_rextents;
+	spin_unlock(&mp->m_sb_lock);
+
+	if (freertx < mp->m_low_rtexts[XFS_LOWSP_5_PCNT]) {
+		shift = 2;
+		if (freertx < mp->m_low_rtexts[XFS_LOWSP_4_PCNT])
+			shift++;
+		if (freertx < mp->m_low_rtexts[XFS_LOWSP_3_PCNT])
+			shift++;
+		if (freertx < mp->m_low_rtexts[XFS_LOWSP_2_PCNT])
+			shift++;
+		if (freertx < mp->m_low_rtexts[XFS_LOWSP_1_PCNT])
+			shift++;
+	}
+
+	if (shift)
+		trace_xfs_gc_delay_frextents(mp, tag, shift);
+
+	return delay_ms >> shift;
+}
+
+/*
  * Scale down the background work delay if we're low on free space.  Similar to
  * the way that we throttle preallocations, we halve the delay time for every
  * low free space threshold that isn't met.  Return value is in ms.
@@ -334,7 +375,7 @@ xfs_gc_delay_ms(
 	unsigned int		tag)
 {
 	unsigned int		default_ms;
-	unsigned int		udelay, gdelay, pdelay, fdelay;
+	unsigned int		udelay, gdelay, pdelay, fdelay, rdelay;
 
 	switch (tag) {
 	case XFS_ICI_INODEGC_TAG:
@@ -356,8 +397,14 @@ xfs_gc_delay_ms(
 	gdelay = xfs_gc_delay_dquot(ip, XFS_DQTYPE_GROUP, tag, default_ms);
 	pdelay = xfs_gc_delay_dquot(ip, XFS_DQTYPE_PROJ, tag, default_ms);
 	fdelay = xfs_gc_delay_freesp(mp, tag, default_ms);
+	rdelay = xfs_gc_delay_freertx(mp, ip, tag, default_ms);
 
-	return min(min(udelay, gdelay), min(pdelay, fdelay));
+	udelay = min(udelay, gdelay);
+	pdelay = min(pdelay, fdelay);
+
+	udelay = min(udelay, pdelay);
+
+	return min(udelay, rdelay);
 }
 
 /*

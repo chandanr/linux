@@ -269,6 +269,28 @@ TRACE_EVENT(xfs_gc_delay_fdblocks,
 		  __entry->fdblocks)
 );
 
+TRACE_EVENT(xfs_gc_delay_frextents,
+	TP_PROTO(struct xfs_mount *mp, unsigned int tag, unsigned int shift),
+	TP_ARGS(mp, tag, shift),
+	TP_STRUCT__entry(
+		__field(dev_t, dev)
+		__field(unsigned long long, frextents)
+		__field(unsigned int, tag)
+		__field(unsigned int, shift)
+	),
+	TP_fast_assign(
+		__entry->dev = mp->m_super->s_dev;
+		__entry->frextents = mp->m_sb.sb_frextents;
+		__entry->tag = tag;
+		__entry->shift = shift;
+	),
+	TP_printk("dev %d:%d tag %u shift %u frextents %llu",
+		  MAJOR(__entry->dev), MINOR(__entry->dev),
+		  __entry->tag,
+		  __entry->shift,
+		  __entry->frextents)
+);
+
 DECLARE_EVENT_CLASS(xfs_gc_queue_class,
 	TP_PROTO(struct xfs_mount *mp, unsigned int delay_ms),
 	TP_ARGS(mp, delay_ms),
