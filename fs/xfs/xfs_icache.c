@@ -365,6 +365,15 @@ xfs_inodegc_want_throttle(
 {
 	struct xfs_mount	*mp = pag->pag_mount;
 
+	/*
+	 * If we're in memory reclaim context, we don't want to wait for inode
+	 * inactivation to finish because it can take a very long time to
+	 * commit all the metadata updates and push the inodes through memory
+	 * reclamation.  Also, we might be the background inodegc thread.
+	 */
+	if (current->reclaim_state != NULL)
+		return false;
+
 	/* Throttle if memory reclaim anywhere has triggered us. */
 	if (atomic_read(&mp->m_inodegc_reclaim) > 0) {
 		trace_xfs_inodegc_throttle_mempressure(mp);
