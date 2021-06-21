@@ -992,21 +992,30 @@ xfs_dqrele_igrab(
 	 * is being inactivated, skip it because inactivation will drop the
 	 * dquots for us.
 	 */
-	if (ip->i_flags & (XFS_IRECLAIM | XFS_IRECLAIMABLE |
-			   XFS_INACTIVATING | XFS_NEED_INACTIVE))
+	if (ip->i_flags & (XFS_IRECLAIM | XFS_IRECLAIMABLE | XFS_INACTIVATING))
 		goto out_unlock;
 
 	/*
-	 * The inode looks alive; try to grab a VFS reference so that it won't
-	 * get destroyed.  If we got the reference, return true to say that
-	 * we grabbed the inode.
+	 * If the inode is queued but not currently undergoing inactivation, we
+	 * want to slip in to drop the dquots ASAP because quotaoff can pin the
+	 * log tail and cause log livelock.  Avoiding that is worth potentially
+	 * forcing the inodegc worker to make another pass.  Set INACTIVATING
+	 * to prevent inodegc and iget from touching the inode.
+	 *
+	 * Otherwise, the inode looks alive; try to grab a VFS reference so
+	 * that it won't get destroyed.  If we got the reference, return true
+	 * to say that we grabbed the inode.
 	 *
 	 * If we can't get the reference, then we know the inode had its VFS
 	 * state torn down and hasn't yet entered the reclaim machinery.  Since
 	 * we also know that dquots are detached from an inode before it enters
 	 * reclaim, we can skip the inode.
 	 */
-	ret = igrab(VFS_I(ip)) != NULL;
+	ret = true;
+	if (ip->i_flags & XFS_NEED_INACTIVE)
+		ip->i_flags |= XFS_INACTIVATING;
+	else if (!igrab(VFS_I(ip)))
+		ret = false;
 
 out_unlock:
 	spin_unlock(&ip->i_flags_lock);
@@ -1019,6 +1028,8 @@ xfs_dqrele_inode(
 	struct xfs_inode	*ip,
 	struct xfs_icwalk	*icw)
 {
+	bool			live_inode;
+
 	if (xfs_iflags_test(ip, XFS_INEW))
 		xfs_inew_wait(ip);
 
@@ -1036,7 +1047,19 @@ xfs_dqrele_inode(
 		ip->i_pdquot = NULL;
 	}
 	xfs_iunlock(ip, XFS_ILOCK_EXCL);
-	xfs_irele(ip);
+
+	/*
+	 * If we set INACTIVATING earlier to prevent this inode from being
+	 * touched, clear that state to let the inodegc claim it.  Otherwise,
+	 * it's a live inode and we need to release it.
+	 */
+	spin_lock(&ip->i_flags_lock);
+	live_inode = !(ip->i_flags & XFS_INACTIVATING);
+	ip->i_flags &= ~XFS_INACTIVATING;
+	spin_unlock(&ip->i_flags_lock);
+
+	if (live_inode)
+		xfs_irele(ip);
 }
 
 /*
