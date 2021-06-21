@@ -430,6 +430,7 @@ DEFINE_EVENT(xfs_inodegc_backlog_class, name,	\
 	TP_PROTO(struct xfs_perag *pag),	\
 	TP_ARGS(pag))
 DEFINE_INODEGC_BACKLOG_EVENT(xfs_inodegc_throttle_backlog);
+DEFINE_INODEGC_BACKLOG_EVENT(xfs_inodegc_delay_backlog);
 
 DECLARE_EVENT_CLASS(xfs_ag_class,
 	TP_PROTO(struct xfs_mount *mp, xfs_agnumber_t agno),

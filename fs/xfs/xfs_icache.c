@@ -444,6 +444,14 @@ xfs_gc_delay_ms(
 			return 0;
 		}
 #endif
+
+#ifdef WANT_IDESTROY_THROTTLE_BACKLOG
+		/* Kick the worker immediately if we've hit the max backlog. */
+		if (pag->pag_ici_needs_inactive > XFS_INODEGC_MAX_BACKLOG) {
+			trace_xfs_inodegc_delay_backlog(pag);
+			return 0;
+		}
+#endif
 		break;
 	default:
 		ASSERT(0);
