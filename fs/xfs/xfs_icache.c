@@ -377,18 +377,60 @@ xfs_gc_delay_freesp(
 }
 
 /*
+ * Scale down the background work delay if we're low on free space in this AG.
+ * Similar to the way that we throttle preallocations, we halve the delay time
+ * for every low free space threshold that isn't met.  Return value is in ms.
+ */
+static inline unsigned int
+xfs_gc_delay_perag(
+	struct xfs_perag	*pag,
+	unsigned int		tag,
+	unsigned int		delay_ms)
+{
+	struct xfs_mount	*mp = pag->pag_mount;
+	xfs_extlen_t		freesp;
+	unsigned int		shift = 0;
+
+	if (!pag->pagf_init)
+		return delay_ms;
+
+	/* Free space in this AG that can be allocated to file data */
+	freesp = pag->pagf_freeblks + pag->pagf_flcount;
+	freesp -= (pag->pag_meta_resv.ar_reserved +
+		   pag->pag_rmapbt_resv.ar_reserved);
+
+	if (freesp < mp->m_ag_low_space[XFS_LOWSP_5_PCNT]) {
+		shift = 2;
+		if (freesp < mp->m_ag_low_space[XFS_LOWSP_4_PCNT])
+			shift++;
+		if (freesp < mp->m_ag_low_space[XFS_LOWSP_3_PCNT])
+			shift++;
+		if (freesp < mp->m_ag_low_space[XFS_LOWSP_2_PCNT])
+			shift++;
+		if (freesp < mp->m_ag_low_space[XFS_LOWSP_1_PCNT])
+			shift++;
+	}
+
+	if (shift)
+		trace_xfs_gc_delay_agfreeblks(pag, tag, shift);
+
+	return delay_ms >> shift;
+}
+
+/*
  * Compute the lag between scheduling and executing some kind of background
  * garbage collection work.  Return value is in ms.  If an inode is passed in,
  * its dquots will be considered in the lag computation.
  */
 static inline unsigned int
 xfs_gc_delay_ms(
-	struct xfs_mount	*mp,
+	struct xfs_perag	*pag,
 	struct xfs_inode	*ip,
 	unsigned int		tag)
 {
+	struct xfs_mount	*mp = pag->pag_mount;
 	unsigned int		default_ms;
-	unsigned int		udelay, gdelay, pdelay, fdelay, rdelay;
+	unsigned int		udelay, gdelay, pdelay, fdelay, rdelay, adelay;
 
 	switch (tag) {
 	case XFS_ICI_INODEGC_TAG:
@@ -413,9 +455,11 @@ xfs_gc_delay_ms(
 	pdelay = xfs_gc_delay_dquot(ip, XFS_DQTYPE_PROJ, tag, default_ms);
 	fdelay = xfs_gc_delay_freesp(mp, tag, default_ms);
 	rdelay = xfs_gc_delay_freertx(mp, ip, tag, default_ms);
+	adelay = xfs_gc_delay_perag(pag, tag, default_ms);
 
 	udelay = min(udelay, gdelay);
 	pdelay = min(pdelay, fdelay);
+	rdelay = min(rdelay, adelay);
 
 	udelay = min(udelay, pdelay);
 
@@ -457,7 +501,7 @@ xfs_inodegc_queue(
 	if (radix_tree_tagged(&mp->m_perag_tree, XFS_ICI_INODEGC_TAG)) {
 		unsigned int	delay;
 
-		delay = xfs_gc_delay_ms(mp, ip, XFS_ICI_INODEGC_TAG);
+		delay = xfs_gc_delay_ms(pag, ip, XFS_ICI_INODEGC_TAG);
 		trace_xfs_inodegc_queue(pag, delay);
 		queue_delayed_work(mp->m_gc_workqueue, &pag->pag_inodegc_work,
 				msecs_to_jiffies(delay));
@@ -498,7 +542,7 @@ xfs_gc_requeue_now(
 	if (!radix_tree_tagged(&mp->m_perag_tree, tag))
 		goto unlock;
 
-	if (xfs_gc_delay_ms(mp, ip, tag) == default_ms)
+	if (xfs_gc_delay_ms(pag, ip, tag) == default_ms)
 		goto unlock;
 
 	trace_xfs_gc_requeue_now(pag, tag);

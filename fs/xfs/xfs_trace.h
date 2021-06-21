@@ -318,6 +318,33 @@ TRACE_EVENT(xfs_gc_delay_frextents,
 		  __entry->frextents)
 );
 
+TRACE_EVENT(xfs_gc_delay_agfreeblks,
+	TP_PROTO(struct xfs_perag *pag, unsigned int tag, unsigned int shift),
+	TP_ARGS(pag, tag, shift),
+	TP_STRUCT__entry(
+		__field(dev_t, dev)
+		__field(xfs_agnumber_t, agno)
+		__field(unsigned int, freeblks)
+		__field(unsigned int, tag)
+		__field(unsigned int, shift)
+	),
+	TP_fast_assign(
+		__entry->dev = pag->pag_mount->m_super->s_dev;
+		__entry->agno = pag->pag_agno;
+		__entry->freeblks = pag->pagf_freeblks + pag->pagf_flcount;
+		__entry->freeblks -= (pag->pag_meta_resv.ar_reserved +
+				      pag->pag_rmapbt_resv.ar_reserved);
+		__entry->tag = tag;
+		__entry->shift = shift;
+	),
+	TP_printk("dev %d:%d tag %u shift %u agno %u freeblks %u",
+		  MAJOR(__entry->dev), MINOR(__entry->dev),
+		  __entry->tag,
+		  __entry->shift,
+		  __entry->agno,
+		  __entry->freeblks)
+);
+
 DECLARE_EVENT_CLASS(xfs_gc_queue_class,
 	TP_PROTO(struct xfs_perag *pag, unsigned int delay_ms),
 	TP_ARGS(pag, delay_ms),

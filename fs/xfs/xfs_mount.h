@@ -130,6 +130,7 @@ typedef struct xfs_mount {
 	uint			m_rsumsize;	/* size of rt summary, bytes */
 	int			m_fixedfsid[2];	/* unchanged for life of FS */
 	uint			m_qflags;	/* quota status flags */
+	int32_t			m_ag_low_space[XFS_LOWSP_MAX];
 	uint64_t		m_flags;	/* global mount flags */
 	int64_t			m_low_space[XFS_LOWSP_MAX];
 	int64_t			m_low_rtexts[XFS_LOWSP_MAX];

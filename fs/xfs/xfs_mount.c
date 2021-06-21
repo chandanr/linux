@@ -504,6 +504,7 @@ xfs_set_low_space_thresholds(
 {
 	uint64_t		dblocks = mp->m_sb.sb_dblocks;
 	uint64_t		rtexts = mp->m_sb.sb_rextents;
+	uint32_t		agblocks = mp->m_sb.sb_agblocks / 100;
 	int			i;
 
 	do_div(dblocks, 100);
@@ -512,6 +513,7 @@ xfs_set_low_space_thresholds(
 	for (i = 0; i < XFS_LOWSP_MAX; i++) {
 		mp->m_low_space[i] = dblocks * (i + 1);
 		mp->m_low_rtexts[i] = rtexts * (i + 1);
+		mp->m_ag_low_space[i] = agblocks * (i + 1);
 	}
 }
 
