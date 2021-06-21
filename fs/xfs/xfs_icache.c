@@ -424,6 +424,12 @@ xfs_inode_mark_reclaimable(
 			xfs_check_delalloc(ip, XFS_COW_FORK);
 			ASSERT(0);
 		}
+	} else {
+		/*
+		 * Drop dquots for disabled quota types to avoid delaying
+		 * quotaoff while we wait for inactivation to occur.
+		 */
+		xfs_qm_prepare_inactive(ip);
 	}
 
 	XFS_STATS_INC(mp, vn_reclaim);

@@ -406,6 +406,34 @@ xfs_qm_dqdetach(
 	}
 }
 
+/*
+ * If a quota type is turned off but we still have a dquot attached to the
+ * inode, detach it before tagging this inode for inactivation (or reclaim) to
+ * avoid delaying quotaoff for longer than is necessary.  Because the inode has
+ * no VFS state and has not yet been tagged for reclaim or inactivation, it is
+ * safe to drop the dquots locklessly because iget, quotaoff, blockgc, and
+ * reclaim will not touch the inode.
+ */
+void
+xfs_qm_prepare_inactive(
+	struct xfs_inode	*ip)
+{
+	struct xfs_mount	*mp = ip->i_mount;
+
+	if (!XFS_IS_UQUOTA_ON(mp)) {
+		xfs_qm_dqrele(ip->i_udquot);
+		ip->i_udquot = NULL;
+	}
+	if (!XFS_IS_GQUOTA_ON(mp)) {
+		xfs_qm_dqrele(ip->i_gdquot);
+		ip->i_gdquot = NULL;
+	}
+	if (!XFS_IS_PQUOTA_ON(mp)) {
+		xfs_qm_dqrele(ip->i_pdquot);
+		ip->i_pdquot = NULL;
+	}
+}
+
 struct xfs_qm_isolate {
 	struct list_head	buffers;
 	struct list_head	dispose;
