@@ -84,5 +84,6 @@ void xfs_inodegc_worker(struct work_struct *work);
 void xfs_inodegc_flush(struct xfs_mount *mp);
 void xfs_inodegc_stop(struct xfs_mount *mp);
 void xfs_inodegc_start(struct xfs_mount *mp);
+int xfs_inodegc_register_shrinker(struct xfs_mount *mp);
 
 #endif

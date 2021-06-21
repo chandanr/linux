@@ -355,6 +355,26 @@ xfs_check_delalloc(
 #endif
 
 /*
+ * Decide if we're going to throttle frontend threads that are inactivating
+ * inodes so that we don't overwhelm the background workers with inodes and OOM
+ * the machine.
+ */
+static inline bool
+xfs_inodegc_want_throttle(
+	struct xfs_perag	*pag)
+{
+	struct xfs_mount	*mp = pag->pag_mount;
+
+	/* Throttle if memory reclaim anywhere has triggered us. */
+	if (atomic_read(&mp->m_inodegc_reclaim) > 0) {
+		trace_xfs_inodegc_throttle_mempressure(mp);
+		return true;
+	}
+
+	return false;
+}
+
+/*
  * We set the inode flag atomically with the radix tree tag.
  * Once we get tag lookups on the radix tree, this inode flag
  * can go away.
@@ -367,6 +387,7 @@ xfs_inode_mark_reclaimable(
 	struct xfs_perag	*pag;
 	unsigned int		tag;
 	bool			need_inactive;
+	bool			flush_inodegc = false;
 
 	need_inactive = xfs_inode_needs_inactive(ip);
 	if (!need_inactive) {
@@ -402,6 +423,7 @@ xfs_inode_mark_reclaimable(
 		trace_xfs_inode_set_need_inactive(ip);
 		ip->i_flags |= XFS_NEED_INACTIVE;
 		tag = XFS_ICI_INODEGC_TAG;
+		flush_inodegc = xfs_inodegc_want_throttle(pag);
 	} else {
 		trace_xfs_inode_set_reclaimable(ip);
 		ip->i_flags |= XFS_IRECLAIMABLE;
@@ -414,13 +436,7 @@ xfs_inode_mark_reclaimable(
 	spin_unlock(&pag->pag_ici_lock);
 	xfs_perag_put(pag);
 
-	/*
-	 * Wait for the background inodegc worker if it's running so that the
-	 * frontend can't overwhelm the background workers with inodes and OOM
-	 * the machine.  We'll improve this with feedback from the rest of the
-	 * system in subsequent patches.
-	 */
-	if (need_inactive && flush_work(&mp->m_inodegc_work.work))
+	if (flush_inodegc && flush_work(&mp->m_inodegc_work.work))
 		trace_xfs_inodegc_throttled(mp, __return_address);
 }
 
@@ -1900,6 +1916,12 @@ xfs_inodegc_worker(
 		trace_xfs_inodegc_worker(mp, __return_address);
 		xfs_icwalk(mp, XFS_ICWALK_INODEGC, NULL);
 	}
+
+	/*
+	 * We inactivated all the inodes we could, so disable the throttling
+	 * of new inactivations that happens when memory gets tight.
+	 */
+	atomic_set(&mp->m_inodegc_reclaim, 0);
 }
 
 /*
@@ -1939,6 +1961,75 @@ xfs_inodegc_start(
 
 	trace_xfs_inodegc_start(mp, __return_address);
 	xfs_inodegc_queue(mp);
+}
+
+/*
+ * Register a phony shrinker so that we can speed up background inodegc and
+ * throttle new inodegc queuing when there's memory pressure.  Inactivation
+ * does not itself free any memory but it does make inodes reclaimable, which
+ * eventually frees memory.  The count function, seek value, and batch value
+ * are crafted to trigger the scan function any time the shrinker is not being
+ * called from a background idle scan (i.e. the second time).
+ */
+#define XFS_INODEGC_SHRINK_COUNT	(1UL << DEF_PRIORITY)
+#define XFS_INODEGC_SHRINK_BATCH	(LONG_MAX)
+
+static unsigned long
+xfs_inodegc_shrink_count(
+	struct shrinker		*shrink,
+	struct shrink_control	*sc)
+{
+	struct xfs_mount	*mp;
+
+	mp = container_of(shrink, struct xfs_mount, m_inodegc_shrink);
+
+	if (radix_tree_tagged(&mp->m_perag_tree, XFS_ICI_INODEGC_TAG))
+		return XFS_INODEGC_SHRINK_COUNT;
+
+	return 0;
+}
+
+static unsigned long
+xfs_inodegc_shrink_scan(
+	struct shrinker		*shrink,
+	struct shrink_control	*sc)
+{
+	struct xfs_mount	*mp;
+
+	/*
+	 * Inode inactivation work requires NOFS allocations, so don't make
+	 * things worse if the caller wanted a NOFS allocation.
+	 */
+	if (!(sc->gfp_mask & __GFP_FS))
+		return SHRINK_STOP;
+
+	mp = container_of(shrink, struct xfs_mount, m_inodegc_shrink);
+
+	if (radix_tree_tagged(&mp->m_perag_tree, XFS_ICI_INODEGC_TAG)) {
+		trace_xfs_inodegc_requeue_mempressure(mp, sc->nr_to_scan,
+				__return_address);
+
+		atomic_inc(&mp->m_inodegc_reclaim);
+		mod_delayed_work(mp->m_gc_workqueue, &mp->m_inodegc_work, 0);
+	}
+
+	return 0;
+}
+
+/* Register a shrinker so we can accelerate inodegc and throttle queuing. */
+int
+xfs_inodegc_register_shrinker(
+	struct xfs_mount	*mp)
+{
+	struct shrinker		*shrink = &mp->m_inodegc_shrink;
+
+	shrink->count_objects = xfs_inodegc_shrink_count;
+	shrink->scan_objects = xfs_inodegc_shrink_scan;
+	shrink->seeks = 0;
+	shrink->flags = SHRINKER_NONSLAB;
+	shrink->batch = XFS_INODEGC_SHRINK_BATCH;
+
+	return register_shrinker(shrink);
 }
 
 /* XFS Inode Cache Walking Code */

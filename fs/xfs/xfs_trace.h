@@ -193,6 +193,25 @@ DEFINE_FS_EVENT(xfs_inodegc_worker);
 DEFINE_FS_EVENT(xfs_inodegc_throttled);
 DEFINE_FS_EVENT(xfs_fs_sync_fs);
 
+TRACE_EVENT(xfs_inodegc_requeue_mempressure,
+	TP_PROTO(struct xfs_mount *mp, unsigned long nr, void *caller_ip),
+	TP_ARGS(mp, nr, caller_ip),
+	TP_STRUCT__entry(
+		__field(dev_t, dev)
+		__field(unsigned long, nr)
+		__field(void *, caller_ip)
+	),
+	TP_fast_assign(
+		__entry->dev = mp->m_super->s_dev;
+		__entry->nr = nr;
+		__entry->caller_ip = caller_ip;
+	),
+	TP_printk("dev %d:%d nr_to_scan %lu caller %pS",
+		  MAJOR(__entry->dev), MINOR(__entry->dev),
+		  __entry->nr,
+		  __entry->caller_ip)
+);
+
 DECLARE_EVENT_CLASS(xfs_gc_queue_class,
 	TP_PROTO(struct xfs_mount *mp, unsigned int delay_ms),
 	TP_ARGS(mp, delay_ms),
@@ -213,6 +232,22 @@ DEFINE_EVENT(xfs_gc_queue_class, name,	\
 	TP_PROTO(struct xfs_mount *mp, unsigned int delay_ms),	\
 	TP_ARGS(mp, delay_ms))
 DEFINE_GC_QUEUE_EVENT(xfs_inodegc_queue);
+
+TRACE_EVENT(xfs_inodegc_throttle_mempressure,
+	TP_PROTO(struct xfs_mount *mp),
+	TP_ARGS(mp),
+	TP_STRUCT__entry(
+		__field(dev_t, dev)
+		__field(int, votes)
+	),
+	TP_fast_assign(
+		__entry->dev = mp->m_super->s_dev;
+		__entry->votes = atomic_read(&mp->m_inodegc_reclaim);
+	),
+	TP_printk("dev %d:%d votes %d",
+		  MAJOR(__entry->dev), MINOR(__entry->dev),
+		  __entry->votes)
+);
 
 DECLARE_EVENT_CLASS(xfs_ag_class,
 	TP_PROTO(struct xfs_mount *mp, xfs_agnumber_t agno),
