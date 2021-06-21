@@ -277,6 +277,13 @@ enum xfs_opflag_bits {
 	 * waiting to be processed.
 	 */
 	XFS_OPFLAG_INODEGC_RUNNING_BIT	= 0,
+
+	/*
+	 * If set, background speculative prealloc gc worker threads will be
+	 * scheduled to process queued blockgc work.  If not, inodes retain
+	 * their preallocations until explicitly deleted.
+	 */
+	XFS_OPFLAG_BLOCKGC_RUNNING_BIT	= 1,
 };
 
 /*

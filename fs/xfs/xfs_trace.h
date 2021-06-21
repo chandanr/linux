@@ -191,6 +191,8 @@ DEFINE_FS_EVENT(xfs_inodegc_start);
 DEFINE_FS_EVENT(xfs_inodegc_stop);
 DEFINE_FS_EVENT(xfs_fs_sync_fs);
 DEFINE_FS_EVENT(xfs_inodegc_delay_mempressure);
+DEFINE_FS_EVENT(xfs_blockgc_start);
+DEFINE_FS_EVENT(xfs_blockgc_stop);
 
 TRACE_EVENT(xfs_inodegc_requeue_mempressure,
 	TP_PROTO(struct xfs_perag *pag, unsigned long nr, void *caller_ip),
@@ -239,6 +241,7 @@ DEFINE_EVENT(xfs_perag_class, name,					\
 	TP_ARGS(pag, caller_ip))
 DEFINE_PERAG_EVENT(xfs_inodegc_throttled);
 DEFINE_PERAG_EVENT(xfs_inodegc_worker);
+DEFINE_PERAG_EVENT(xfs_blockgc_worker);
 
 TRACE_EVENT(xfs_gc_delay_dquot,
 	TP_PROTO(struct xfs_dquot *dqp, unsigned int tag, unsigned int shift),
@@ -368,6 +371,7 @@ DEFINE_EVENT(xfs_gc_queue_class, name,	\
 	TP_PROTO(struct xfs_perag *pag, unsigned int delay_ms),	\
 	TP_ARGS(pag, delay_ms))
 DEFINE_GC_QUEUE_EVENT(xfs_inodegc_queue);
+DEFINE_GC_QUEUE_EVENT(xfs_blockgc_queue);
 
 TRACE_EVENT(xfs_gc_requeue_now,
 	TP_PROTO(struct xfs_perag *pag, unsigned int tag),

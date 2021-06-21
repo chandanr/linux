@@ -482,11 +482,19 @@ static inline void
 xfs_blockgc_queue(
 	struct xfs_perag	*pag)
 {
+	struct xfs_mount        *mp = pag->pag_mount;
+
+	if (!test_bit(XFS_OPFLAG_BLOCKGC_RUNNING_BIT, &mp->m_opflags))
+		return;
+
 	rcu_read_lock();
-	if (radix_tree_tagged(&pag->pag_ici_root, XFS_ICI_BLOCKGC_TAG))
-		queue_delayed_work(pag->pag_mount->m_gc_workqueue,
-				   &pag->pag_blockgc_work,
-				   msecs_to_jiffies(xfs_blockgc_secs * 1000));
+	if (radix_tree_tagged(&pag->pag_ici_root, XFS_ICI_BLOCKGC_TAG)) {
+		unsigned int	delay = xfs_blockgc_secs * 1000;
+
+		trace_xfs_blockgc_queue(pag, delay);
+		queue_delayed_work(mp->m_gc_workqueue, &pag->pag_blockgc_work,
+				msecs_to_jiffies(delay));
+	}
 	rcu_read_unlock();
 }
 
@@ -1945,8 +1953,12 @@ xfs_blockgc_stop(
 	struct xfs_perag	*pag;
 	xfs_agnumber_t		agno;
 
-	for_each_perag_tag(mp, agno, pag, XFS_ICI_BLOCKGC_TAG)
+	if (!test_and_clear_bit(XFS_OPFLAG_BLOCKGC_RUNNING_BIT, &mp->m_opflags))
+		return;
+
+	for_each_perag(mp, agno, pag)
 		cancel_delayed_work_sync(&pag->pag_blockgc_work);
+	trace_xfs_blockgc_stop(mp, __return_address);
 }
 
 /* Enable post-EOF and CoW block auto-reclamation. */
@@ -1957,6 +1969,10 @@ xfs_blockgc_start(
 	struct xfs_perag	*pag;
 	xfs_agnumber_t		agno;
 
+	if (!test_and_set_bit(XFS_OPFLAG_BLOCKGC_RUNNING_BIT, &mp->m_opflags))
+		return;
+
+	trace_xfs_blockgc_start(mp, __return_address);
 	for_each_perag_tag(mp, agno, pag, XFS_ICI_BLOCKGC_TAG)
 		xfs_blockgc_queue(pag);
 }
@@ -2014,6 +2030,13 @@ xfs_blockgc_scan_inode(
 	unsigned int		lockflags = 0;
 	int			error;
 
+	/*
+	 * Speculative preallocation gc isn't supposed to run when the fs is
+	 * frozen because we don't want kernel threads to block on transaction
+	 * allocation.
+	 */
+	ASSERT(ip->i_mount->m_super->s_writers.frozen < SB_FREEZE_FS);
+
 	error = xfs_inode_free_eofblocks(ip, icw, &lockflags);
 	if (error)
 		goto unlock;
@@ -2036,13 +2059,12 @@ xfs_blockgc_worker(
 	struct xfs_mount	*mp = pag->pag_mount;
 	int			error;
 
-	if (!sb_start_write_trylock(mp->m_super))
-		return;
+	trace_xfs_blockgc_worker(pag, __return_address);
+
 	error = xfs_icwalk_ag(pag, XFS_ICWALK_BLOCKGC, NULL);
 	if (error)
 		xfs_info(mp, "AG %u preallocation gc worker failed, err=%d",
 				pag->pag_agno, error);
-	sb_end_write(mp->m_super);
 	xfs_blockgc_queue(pag);
 }
 

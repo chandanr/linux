@@ -928,6 +928,7 @@ xfs_mountfs(
 
 	/* Enable background inode inactivation workers. */
 	xfs_inodegc_start(mp);
+	xfs_blockgc_start(mp);
 
 	/*
 	 * Get and sanity-check the root inode.
