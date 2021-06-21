@@ -223,6 +223,32 @@ xfs_reclaim_work_queue(
 }
 
 /*
+ * Compute the lag between scheduling and executing some kind of background
+ * garbage collection work.  Return value is in ms.
+ */
+static inline unsigned int
+xfs_gc_delay_ms(
+	struct xfs_mount	*mp,
+	unsigned int		tag)
+{
+	switch (tag) {
+	case XFS_ICI_INODEGC_TAG:
+		/* If we're in a shrinker, kick off the worker immediately. */
+		if (current->reclaim_state != NULL) {
+			trace_xfs_inodegc_delay_mempressure(mp,
+					__return_address);
+			return 0;
+		}
+		break;
+	default:
+		ASSERT(0);
+		return 0;
+	}
+
+	return 0;
+}
+
+/*
  * Background scanning to trim preallocated space. This is queued based on the
  * 'speculative_prealloc_lifetime' tunable (5m by default).
  */
@@ -252,8 +278,12 @@ xfs_inodegc_queue(
 
 	rcu_read_lock();
 	if (radix_tree_tagged(&mp->m_perag_tree, XFS_ICI_INODEGC_TAG)) {
-		trace_xfs_inodegc_queue(mp, 0);
-		queue_delayed_work(mp->m_gc_workqueue, &mp->m_inodegc_work, 0);
+		unsigned int	delay;
+
+		delay = xfs_gc_delay_ms(mp, XFS_ICI_INODEGC_TAG);
+		trace_xfs_inodegc_queue(mp, delay);
+		queue_delayed_work(mp->m_gc_workqueue, &mp->m_inodegc_work,
+				msecs_to_jiffies(delay));
 	}
 	rcu_read_unlock();
 }
