@@ -27,6 +27,19 @@
 
 #include <linux/iversion.h>
 
+/* If defined, enable throttling of frontend at all */
+#define WANT_IDESTROY_THROTTLE
+/* If undefined, mark_reclaimable flushes even if in direct reclaim */
+#undef WANT_IDESTROY_THROTTLE_DIRECT_RECLAIM
+/* If defined, mark_reclaimable flushes if system is try to reclaim */
+#define WANT_IDESTROY_THROTTLE_RECLAIM
+/* If defined, mark_reclaimable flushes if we hit the max backlog */
+#define WANT_IDESTROY_THROTTLE_BACKLOG
+/* If defined, reclaim makes the inodegc worker run */
+#define WANT_RECLAIM_PUSH_INODEGC
+/* If defined, only direct reclaim gets to push the inodegc workers */
+#undef WANT_ONLY_DIRECT_RECLAIM_PUSH_INODEGC
+
 /* Radix tree tags for incore inode tree. */
 
 /* inode is to be reclaimed */
@@ -381,12 +394,14 @@ xfs_gc_delay_ms(
 	case XFS_ICI_INODEGC_TAG:
 		default_ms = xfs_inodegc_ms;
 
+#ifdef WANT_IDESTROY_THROTTLE_RECLAIM
 		/* If we're in a shrinker, kick off the worker immediately. */
 		if (current->reclaim_state != NULL) {
 			trace_xfs_inodegc_delay_mempressure(mp,
 					__return_address);
 			return 0;
 		}
+#endif
 		break;
 	default:
 		ASSERT(0);
@@ -598,6 +613,7 @@ xfs_check_delalloc(
 #define xfs_check_delalloc(ip, whichfork)	do { } while (0)
 #endif
 
+#ifdef WANT_IDESTROY_THROTTLE
 /*
  * Decide if we're going to throttle frontend threads that are inactivating
  * inodes so that we don't overwhelm the background workers with inodes and OOM
@@ -609,6 +625,7 @@ xfs_inodegc_want_throttle(
 {
 	struct xfs_mount	*mp = pag->pag_mount;
 
+#ifndef WANT_IDESTROY_THROTTLE_DIRECT_RECLAIM
 	/*
 	 * If we're in memory reclaim context, we don't want to wait for inode
 	 * inactivation to finish because it can take a very long time to
@@ -617,21 +634,28 @@ xfs_inodegc_want_throttle(
 	 */
 	if (current->reclaim_state != NULL)
 		return false;
+#endif
 
+#ifdef WANT_IDESTROY_THROTTLE_BACKLOG
 	/* Enforce an upper bound on how many inodes can queue up. */
 	if (pag->pag_ici_needs_inactive > XFS_INODEGC_MAX_BACKLOG) {
 		trace_xfs_inodegc_throttle_backlog(pag);
 		return true;
 	}
+#endif
 
+#ifdef WANT_IDESTROY_THROTTLE_RECLAIM
 	/* Throttle if memory reclaim anywhere has triggered us. */
 	if (atomic_read(&mp->m_inodegc_reclaim) > 0) {
 		trace_xfs_inodegc_throttle_mempressure(mp);
 		return true;
 	}
-
+#endif
 	return false;
 }
+#else
+# define xfs_inodegc_want_throttle(pag)		(false)
+#endif /* WANT_DESTROY_THROTTLE */
 
 /*
  * We set the inode flag atomically with the radix tree tag.
@@ -2211,11 +2235,13 @@ xfs_inodegc_worker(
 		xfs_icwalk(mp, XFS_ICWALK_INODEGC, NULL);
 	}
 
+#ifdef WANT_IDESTROY_THROTTLE_RECLAIM
 	/*
 	 * We inactivated all the inodes we could, so disable the throttling
 	 * of new inactivations that happens when memory gets tight.
 	 */
 	atomic_set(&mp->m_inodegc_reclaim, 0);
+#endif
 }
 
 /*
@@ -2273,13 +2299,14 @@ xfs_inodegc_shrink_count(
 	struct shrinker		*shrink,
 	struct shrink_control	*sc)
 {
+#ifdef WANT_RECLAIM_PUSH_INODEGC
 	struct xfs_mount	*mp;
 
 	mp = container_of(shrink, struct xfs_mount, m_inodegc_shrink);
 
 	if (radix_tree_tagged(&mp->m_perag_tree, XFS_ICI_INODEGC_TAG))
 		return XFS_INODEGC_SHRINK_COUNT;
-
+#endif
 	return 0;
 }
 
@@ -2303,8 +2330,12 @@ xfs_inodegc_shrink_scan(
 		trace_xfs_inodegc_requeue_mempressure(mp, sc->nr_to_scan,
 				__return_address);
 
+#ifdef WANT_IDESTROY_THROTTLE_RECLAIM
 		atomic_inc(&mp->m_inodegc_reclaim);
+#endif
+#ifdef WANT_RECLAIM_PUSH_INODEGC
 		mod_delayed_work(mp->m_gc_workqueue, &mp->m_inodegc_work, 0);
+#endif
 	}
 
 	return 0;
