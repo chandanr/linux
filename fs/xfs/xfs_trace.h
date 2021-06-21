@@ -249,6 +249,30 @@ TRACE_EVENT(xfs_inodegc_throttle_mempressure,
 		  __entry->votes)
 );
 
+DECLARE_EVENT_CLASS(xfs_inodegc_backlog_class,
+	TP_PROTO(struct xfs_perag *pag),
+	TP_ARGS(pag),
+	TP_STRUCT__entry(
+		__field(dev_t, dev)
+		__field(xfs_agnumber_t, agno)
+		__field(unsigned int, needs_inactive)
+	),
+	TP_fast_assign(
+		__entry->dev = pag->pag_mount->m_super->s_dev;
+		__entry->agno = pag->pag_agno;
+		__entry->needs_inactive = pag->pag_ici_needs_inactive;
+	),
+	TP_printk("dev %d:%d agno %u needs_inactive %u",
+		  MAJOR(__entry->dev), MINOR(__entry->dev),
+		  __entry->agno,
+		  __entry->needs_inactive)
+);
+#define DEFINE_INODEGC_BACKLOG_EVENT(name)	\
+DEFINE_EVENT(xfs_inodegc_backlog_class, name,	\
+	TP_PROTO(struct xfs_perag *pag),	\
+	TP_ARGS(pag))
+DEFINE_INODEGC_BACKLOG_EVENT(xfs_inodegc_throttle_backlog);
+
 DECLARE_EVENT_CLASS(xfs_ag_class,
 	TP_PROTO(struct xfs_mount *mp, xfs_agnumber_t agno),
 	TP_ARGS(mp, agno),

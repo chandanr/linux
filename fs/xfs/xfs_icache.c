@@ -37,6 +37,12 @@
 #define XFS_ICI_INODEGC_TAG	2
 
 /*
+ * Upper bound on the number of inodes in each AG that can be queued for
+ * inactivation at any given time, to avoid monopolizing the workqueue.
+ */
+#define XFS_INODEGC_MAX_BACKLOG	(1024 * XFS_INODES_PER_CHUNK)
+
+/*
  * The goal for walking incore inodes.  These can correspond with incore inode
  * radix tree tags when convenient.  Avoid existing XFS_IWALK namespace.
  */
@@ -269,6 +275,8 @@ xfs_perag_set_inode_tag(
 
 	if (tag == XFS_ICI_RECLAIM_TAG)
 		pag->pag_ici_reclaimable++;
+	else if (tag == XFS_ICI_INODEGC_TAG)
+		pag->pag_ici_needs_inactive++;
 
 	if (was_tagged)
 		return;
@@ -316,6 +324,8 @@ xfs_perag_clear_inode_tag(
 
 	if (tag == XFS_ICI_RECLAIM_TAG)
 		pag->pag_ici_reclaimable--;
+	else if (tag == XFS_ICI_INODEGC_TAG)
+		pag->pag_ici_needs_inactive--;
 
 	if (radix_tree_tagged(&pag->pag_ici_root, tag))
 		return;
@@ -373,6 +383,12 @@ xfs_inodegc_want_throttle(
 	 */
 	if (current->reclaim_state != NULL)
 		return false;
+
+	/* Enforce an upper bound on how many inodes can queue up. */
+	if (pag->pag_ici_needs_inactive > XFS_INODEGC_MAX_BACKLOG) {
+		trace_xfs_inodegc_throttle_backlog(pag);
+		return true;
+	}
 
 	/* Throttle if memory reclaim anywhere has triggered us. */
 	if (atomic_read(&mp->m_inodegc_reclaim) > 0) {
