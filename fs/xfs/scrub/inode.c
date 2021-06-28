@@ -220,6 +220,7 @@ xchk_dinode(
 	unsigned long long	isize;
 	uint64_t		flags2;
 	uint32_t		nextents;
+	prid_t			prid;
 	uint16_t		flags;
 	uint16_t		mode;
 
@@ -254,6 +255,7 @@ xchk_dinode(
 		 * so just mark this inode for preening.
 		 */
 		xchk_ino_set_preen(sc, ino);
+		prid = 0;
 		break;
 	case 2:
 	case 3:
@@ -266,11 +268,16 @@ xchk_dinode(
 		if (dip->di_projid_hi != 0 &&
 		    !xfs_sb_version_hasprojid32bit(&mp->m_sb))
 			xchk_ino_set_corrupt(sc, ino);
+
+		prid = be16_to_cpu(dip->di_projid_lo);
 		break;
 	default:
 		xchk_ino_set_corrupt(sc, ino);
 		return;
 	}
+
+	if (xfs_sb_version_hasprojid32bit(&mp->m_sb))
+		prid |= (prid_t)be16_to_cpu(dip->di_projid_hi) << 16;
 
 	/*
 	 * di_uid/di_gid -- -1 isn't invalid, but there's no way that
@@ -278,6 +285,13 @@ xchk_dinode(
 	 */
 	if (dip->di_uid == cpu_to_be32(-1U) ||
 	    dip->di_gid == cpu_to_be32(-1U))
+		xchk_ino_set_warning(sc, ino);
+
+	/*
+	 * project id of -1 isn't supposed to be valid, but the kernel didn't
+	 * always validate that.
+	 */
+	if (prid == -1U)
 		xchk_ino_set_warning(sc, ino);
 
 	/* di_format */
