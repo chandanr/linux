@@ -4218,7 +4218,8 @@ DEFINE_ICLOG_EVENT(xlog_iclog_write);
 
 #define XFS_SWAP_REQ_STRINGS \
 	{ XFS_SWAP_REQ_SET_SIZES,		"SETSIZES" }, \
-	{ XFS_SWAP_REQ_SKIP_FILE1_HOLES,	"SKIP_FILE1_HOLES" }
+	{ XFS_SWAP_REQ_SKIP_FILE1_HOLES,	"SKIP_FILE1_HOLES" }, \
+	{ XFS_SWAP_REQ_FILE2_CVT_SF,		"INO2_SHORTFORM" }
 
 TRACE_EVENT(xfs_swapext_estimate,
 	TP_PROTO(const struct xfs_swapext_req *req,
@@ -4274,7 +4275,8 @@ TRACE_EVENT(xfs_swapext_estimate,
 #define XFS_SWAP_EXT_STRINGS \
 	{ XFS_SWAP_EXT_ATTR_FORK,		"ATTRFORK" }, \
 	{ XFS_SWAP_EXT_SET_SIZES,		"SETSIZES" }, \
-	{ XFS_SWAP_EXT_SKIP_FILE1_HOLES,	"SKIP_FILE1_HOLES" }
+	{ XFS_SWAP_EXT_SKIP_FILE1_HOLES,	"SKIP_FILE1_HOLES" }, \
+	{ XFS_SWAP_EXT_FILE2_CVT_SF,		"INO2_SHORTFORM" }
 
 TRACE_EVENT(xfs_swapext_defer,
 	TP_PROTO(struct xfs_mount *mp, const struct xfs_swapext_intent *sxi),

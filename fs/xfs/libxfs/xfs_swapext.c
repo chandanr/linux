@@ -22,6 +22,10 @@
 #include "xfs_trans_space.h"
 #include "xfs_errortag.h"
 #include "xfs_error.h"
+#include "xfs_da_format.h"
+#include "xfs_da_btree.h"
+#include "xfs_attr_leaf.h"
+#include "xfs_attr.h"
 
 /* bmbt mappings adjacent to a pair of records. */
 struct xfs_swapext_adjacent {
@@ -199,6 +203,12 @@ static inline bool
 sxi_has_more_swap_work(const struct xfs_swapext_intent *sxi)
 {
 	return sxi->sxi_blockcount > 0;
+}
+
+static inline bool
+sxi_has_postop_work(const struct xfs_swapext_intent *sxi)
+{
+	return sxi->sxi_flags & XFS_SWAP_EXT_FILE2_CVT_SF;
 }
 
 static inline void
@@ -422,6 +432,55 @@ xfs_swapext_exchange_mappings(
 	sxi_advance(sxi, irec1);
 }
 
+/* Convert inode2's leaf attr fork back to shortform, if possible.. */
+STATIC int
+xfs_swapext_attr_to_sf(
+	struct xfs_trans		*tp,
+	struct xfs_swapext_intent	*sxi)
+{
+	struct xfs_da_args	args = {
+		.dp		= sxi->sxi_ip2,
+		.geo		= tp->t_mountp->m_attr_geo,
+		.whichfork	= XFS_ATTR_FORK,
+		.trans		= tp,
+	};
+	struct xfs_buf		*bp;
+	int			forkoff;
+	int			error;
+
+	if (!xfs_attr_is_leaf(sxi->sxi_ip2))
+		return 0;
+
+	error = xfs_attr3_leaf_read(tp, sxi->sxi_ip2, 0, &bp);
+	if (error)
+		return error;
+
+	forkoff = xfs_attr_shortform_allfit(bp, sxi->sxi_ip2);
+	if (forkoff == 0)
+		return 0;
+
+	return xfs_attr3_leaf_to_shortform(bp, &args, forkoff);
+}
+
+/* Finish whatever work might come after a swap operation. */
+static int
+xfs_swapext_postop_work(
+	struct xfs_trans		*tp,
+	struct xfs_swapext_intent	*sxi)
+{
+	int				error = 0;
+
+	if (sxi->sxi_flags & XFS_SWAP_EXT_FILE2_CVT_SF) {
+		if (sxi->sxi_flags & XFS_SWAP_EXT_ATTR_FORK)
+			error = xfs_swapext_attr_to_sf(tp, sxi);
+		sxi->sxi_flags &= ~XFS_SWAP_EXT_FILE2_CVT_SF;
+		if (error)
+			return error;
+	}
+
+	return 0;
+}
+
 /* Finish one extent swap, possibly log more. */
 int
 xfs_swapext_finish_one(
@@ -429,7 +488,18 @@ xfs_swapext_finish_one(
 	struct xfs_swapext_intent	*sxi)
 {
 	struct xfs_bmbt_irec		irec1, irec2;
-	int				error;
+	int				error = 0;
+
+	/*
+	 * If there isn't any exchange work to do, the previous transaction
+	 * finished the extent swap and now we need to do some post-op cleanup
+	 * work on file2.
+	 */
+	if (!sxi_has_more_swap_work(sxi)) {
+		ASSERT(sxi_has_postop_work(sxi));
+
+		return xfs_swapext_postop_work(tp, sxi);
+	}
 
 	/* Find something to swap and swap it. */
 	error = xfs_swapext_find_mappings(sxi, &irec1, &irec2, NULL);
@@ -457,7 +527,7 @@ xfs_swapext_finish_one(
 		return -EIO;
 
 	/* If we still have work to do, ask for a new transaction. */
-	if (sxi_has_more_swap_work(sxi)) {
+	if (sxi_has_more_swap_work(sxi) || sxi_has_postop_work(sxi)) {
 		trace_xfs_swapext_defer(tp->t_mountp, sxi);
 		return -EAGAIN;
 	}
@@ -466,7 +536,7 @@ xfs_swapext_finish_one(
 }
 
 /* Estimate the bmbt and rmapbt overhead required to exchange extents. */
-static int
+int
 xfs_swapext_estimate_overhead(
 	const struct xfs_swapext_req	*req,
 	struct xfs_swapext_res		*res)
@@ -725,6 +795,8 @@ xfs_swapext_init_intent(
 
 	if (req->req_flags & XFS_SWAP_REQ_SKIP_FILE1_HOLES)
 		sxi->sxi_flags |= XFS_SWAP_EXT_SKIP_FILE1_HOLES;
+	if (req->req_flags & XFS_SWAP_REQ_FILE2_CVT_SF)
+		sxi->sxi_flags |= XFS_SWAP_EXT_FILE2_CVT_SF;
 
 	return sxi;
 }
@@ -867,6 +939,8 @@ xfs_swapext(
 	ASSERT(!(req->req_flags & ~XFS_SWAP_REQ_FLAGS));
 	if (req->req_flags & XFS_SWAP_REQ_SET_SIZES)
 		ASSERT(req->whichfork == XFS_DATA_FORK);
+	if (req->req_flags & XFS_SWAP_REQ_FILE2_CVT_SF)
+		ASSERT(req->whichfork == XFS_ATTR_FORK);
 
 	if (req->blockcount == 0)
 		return 0;
