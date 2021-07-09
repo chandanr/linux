@@ -611,13 +611,12 @@ static inline bool xfs_sb_version_needsrepair(struct xfs_sb *sbp)
 /*
  * Decide if this filesystem can use log-assisted ("atomic") extent swapping.
  * The atomic swap log intent items depend on the block mapping log intent
- * items introduced with reflink and rmap.  Realtime is not supported yet.
+ * items introduced with reflink and rmap.
  */
 static inline bool xfs_sb_version_canatomicswap(struct xfs_sb *sbp)
 {
-	return (xfs_sb_version_hasreflink(sbp) ||
-		xfs_sb_version_hasrmapbt(sbp)) &&
-		!xfs_sb_version_hasrealtime(sbp);
+	return  xfs_sb_version_hasreflink(sbp) ||
+		xfs_sb_version_hasrmapbt(sbp);
 }
 
 static inline bool xfs_sb_version_hasatomicswap(struct xfs_sb *sbp)
