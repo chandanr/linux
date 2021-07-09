@@ -3,8 +3,8 @@
  * Copyright (C) 2021 Oracle.  All Rights Reserved.
  * Author: Darrick J. Wong <djwong@kernel.org>
  */
-#ifndef	__XFS_SWAPEXT_ITEM_H__
-#define	__XFS_SWAPEXT_ITEM_H__
+#ifndef	__XFS_SWAP_EXT_ITEM_H__
+#define	__XFS_SWAP_EXT_ITEM_H__
 
 /*
  * The extent swapping intent item help us perform atomic extent swaps between
@@ -58,4 +58,4 @@ struct xfs_sxd_log_item {
 extern struct kmem_zone	*xfs_sxi_zone;
 extern struct kmem_zone	*xfs_sxd_zone;
 
-#endif	/* __XFS_SWAPEXT_ITEM_H__ */
+#endif	/* __XFS_SWAP_EXT_ITEM_H__ */

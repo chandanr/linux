@@ -812,17 +812,17 @@ struct xfs_swap_extent {
 };
 
 /* Swap extents between extended attribute forks. */
-#define XFS_SWAP_EXTENT_ATTR_FORK	(1ULL << 0)
+#define XFS_SWAP_EXT_ATTR_FORK		(1ULL << 0)
 
 /* Set the file sizes when finished. */
-#define XFS_SWAP_EXTENT_SET_SIZES	(1ULL << 1)
+#define XFS_SWAP_EXT_SET_SIZES		(1ULL << 1)
 
 /* Do not swap any part of the range where file1's mapping is a hole. */
-#define XFS_SWAP_EXTENT_SKIP_FILE1_HOLES (1ULL << 2)
+#define XFS_SWAP_EXT_SKIP_FILE1_HOLES	(1ULL << 2)
 
-#define XFS_SWAP_EXTENT_FLAGS		(XFS_SWAP_EXTENT_ATTR_FORK | \
-					 XFS_SWAP_EXTENT_SET_SIZES | \
-					 XFS_SWAP_EXTENT_SKIP_FILE1_HOLES)
+#define XFS_SWAP_EXT_FLAGS		(XFS_SWAP_EXT_ATTR_FORK | \
+					 XFS_SWAP_EXT_SET_SIZES | \
+					 XFS_SWAP_EXT_SKIP_FILE1_HOLES)
 
 /* This is the structure used to lay out an sxi log item in the log. */
 struct xfs_sxi_log_format {
