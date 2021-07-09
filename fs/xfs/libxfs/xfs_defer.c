@@ -628,7 +628,8 @@ xfs_defer_move(
 static struct xfs_defer_capture *
 xfs_defer_ops_capture(
 	struct xfs_trans		*tp,
-	struct xfs_inode		*capture_ip)
+	struct xfs_inode		*capture_ip1,
+	struct xfs_inode		*capture_ip2)
 {
 	struct xfs_defer_capture	*dfc;
 
@@ -658,9 +659,13 @@ xfs_defer_ops_capture(
 	 * Grab an extra reference to this inode and attach it to the capture
 	 * structure.
 	 */
-	if (capture_ip) {
-		ihold(VFS_I(capture_ip));
-		dfc->dfc_capture_ip = capture_ip;
+	if (capture_ip1) {
+		ihold(VFS_I(capture_ip1));
+		dfc->dfc_capture_ip1 = capture_ip1;
+	}
+	if (capture_ip2 && capture_ip2 != capture_ip1) {
+		ihold(VFS_I(capture_ip2));
+		dfc->dfc_capture_ip2 = capture_ip2;
 	}
 
 	return dfc;
@@ -673,8 +678,10 @@ xfs_defer_ops_release(
 	struct xfs_defer_capture	*dfc)
 {
 	xfs_defer_cancel_list(mp, &dfc->dfc_dfops);
-	if (dfc->dfc_capture_ip)
-		xfs_irele(dfc->dfc_capture_ip);
+	if (dfc->dfc_capture_ip1)
+		xfs_irele(dfc->dfc_capture_ip1);
+	if (dfc->dfc_capture_ip2)
+		xfs_irele(dfc->dfc_capture_ip2);
 	kmem_free(dfc);
 }
 
@@ -684,22 +691,26 @@ xfs_defer_ops_release(
  * of the deferred ops operate on an inode, the caller must pass in that inode
  * so that the reference can be transferred to the capture structure.  The
  * caller must hold ILOCK_EXCL on the inode, and must unlock it before calling
- * xfs_defer_ops_continue.
+ * xfs_defer_ops_continue.  Do not pass a null capture_ip1 and a non-null
+ * capture_ip2.
  */
 int
 xfs_defer_ops_capture_and_commit(
 	struct xfs_trans		*tp,
-	struct xfs_inode		*capture_ip,
+	struct xfs_inode		*capture_ip1,
+	struct xfs_inode		*capture_ip2,
 	struct list_head		*capture_list)
 {
 	struct xfs_mount		*mp = tp->t_mountp;
 	struct xfs_defer_capture	*dfc;
 	int				error;
 
-	ASSERT(!capture_ip || xfs_isilocked(capture_ip, XFS_ILOCK_EXCL));
+	ASSERT(!capture_ip1 || xfs_isilocked(capture_ip1, XFS_ILOCK_EXCL));
+	ASSERT(!capture_ip2 || xfs_isilocked(capture_ip2, XFS_ILOCK_EXCL));
+	ASSERT(capture_ip2 == NULL || capture_ip1 != NULL);
 
 	/* If we don't capture anything, commit transaction and exit. */
-	dfc = xfs_defer_ops_capture(tp, capture_ip);
+	dfc = xfs_defer_ops_capture(tp, capture_ip1, capture_ip2);
 	if (!dfc)
 		return xfs_trans_commit(tp);
 
@@ -724,17 +735,24 @@ void
 xfs_defer_ops_continue(
 	struct xfs_defer_capture	*dfc,
 	struct xfs_trans		*tp,
-	struct xfs_inode		**captured_ipp)
+	struct xfs_inode		**captured_ipp1,
+	struct xfs_inode		**captured_ipp2)
 {
 	ASSERT(tp->t_flags & XFS_TRANS_PERM_LOG_RES);
 	ASSERT(!(tp->t_flags & XFS_TRANS_DIRTY));
 
 	/* Lock and join the captured inode to the new transaction. */
-	if (dfc->dfc_capture_ip) {
-		xfs_ilock(dfc->dfc_capture_ip, XFS_ILOCK_EXCL);
-		xfs_trans_ijoin(tp, dfc->dfc_capture_ip, 0);
+	if (dfc->dfc_capture_ip1 && dfc->dfc_capture_ip2) {
+		xfs_lock_two_inodes(dfc->dfc_capture_ip1, XFS_ILOCK_EXCL,
+				    dfc->dfc_capture_ip2, XFS_ILOCK_EXCL);
+		xfs_trans_ijoin(tp, dfc->dfc_capture_ip1, 0);
+		xfs_trans_ijoin(tp, dfc->dfc_capture_ip2, 0);
+	} else if (dfc->dfc_capture_ip1) {
+		xfs_ilock(dfc->dfc_capture_ip1, XFS_ILOCK_EXCL);
+		xfs_trans_ijoin(tp, dfc->dfc_capture_ip1, 0);
 	}
-	*captured_ipp = dfc->dfc_capture_ip;
+	*captured_ipp1 = dfc->dfc_capture_ip1;
+	*captured_ipp2 = dfc->dfc_capture_ip2;
 
 	/* Move captured dfops chain and state to the transaction. */
 	list_splice_init(&dfc->dfc_dfops, &tp->t_dfops);
