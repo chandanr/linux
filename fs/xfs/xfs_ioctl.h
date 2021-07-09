@@ -16,9 +16,7 @@ xfs_ioc_space(
 	struct file		*filp,
 	xfs_flock64_t		*bf);
 
-int
-xfs_ioc_swapext(
-	xfs_swapext_t	*sxp);
+int xfs_ioc_swapext(struct xfs_swapext *sxp);
 
 extern int
 xfs_find_handle(
