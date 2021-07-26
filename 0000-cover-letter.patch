@@ -1,0 +1,130 @@
+From d7a16dd18fca9e06c0de321f9bbb9fa0dac0ea6a Mon Sep 17 00:00:00 2001
+From: Chandan Babu R <chandanrlinux@gmail.com>
+Date: Mon, 26 Jul 2021 12:40:48 +0530
+Subject: [PATCH V2 00/12] xfs: Extend per-inode extent counters
+To: linux-xfs@vger.kernel.org
+Cc: djwong@kernel.org
+
+The commit xfs: fix inode fork extent count overflow
+(3f8a4f1d876d3e3e49e50b0396eaffcc4ba71b08) mentions that 10 billion
+data fork extents should be possible to create. However the
+corresponding on-disk field has a signed 32-bit type. Hence this
+patchset extends the per-inode data extent counter to 64 bits out of
+which 48 bits are used to store the extent count. 
+
+Also, XFS has an attr fork extent counter which is 16 bits wide. A
+workload which,
+1. Creates 1 million 255-byte sized xattrs,
+2. Deletes 50% of these xattrs in an alternating manner,
+3. Tries to insert 400,000 new 255-byte sized xattrs
+   causes the xattr extent counter to overflow.
+
+Dave tells me that there are instances where a single file has more
+than 100 million hardlinks. With parent pointers being stored in
+xattrs, we will overflow the signed 16-bits wide xattr extent counter
+when large number of hardlinks are created. Hence this patchset
+extends the on-disk field to 32-bits.
+
+The following changes are made to accomplish this,
+1. A new incompat superblock flag to prevent older kernels from mounting
+   the filesystem. This flag has to be set during mkfs time.
+2. A new 64-bit inode field is created to hold the data extent
+   counter.
+3. The existing 32-bit inode data extent counter will be used to hold
+   the attr fork extent counter.
+
+The patchset has been tested by executing xfstests with the following
+mkfs.xfs options,
+1. -m crc=0 -b size=1k
+2. -m crc=0 -b size=4k
+3. -m crc=0 -b size=512
+4. -m rmapbt=1,reflink=1 -b size=1k
+5. -m rmapbt=1,reflink=1 -b size=4k
+
+Each of the above test scenarios were executed on the following
+combinations (For V4 FS test scenario, the last combination
+i.e. "Patched (enable extcnt64bit)", was omitted).
+|-------------------------------+-----------|
+| Xfsprogs                      | Kernel    |
+|-------------------------------+-----------|
+| Unpatched                     | Patched   |
+| Patched (disable extcnt64bit) | Unpatched |
+| Patched (disable extcnt64bit) | Patched   |
+| Patched (enable extcnt64bit)  | Patched   |
+|-------------------------------+-----------|
+
+I have also written a test (yet to be converted into xfstests format)
+to check if the correct extent counter fields are updated with/without
+the new incompat flag. I have also fixed some of the existing fstests
+to work with the new extent counter fields.
+
+Increasing data extent counter width also causes the maximum height of
+BMBT to increase. This requires that the macro XFS_BTREE_MAXLEVELS be
+updated with a larger value. However such a change causes the value of
+mp->m_rmap_maxlevels to increase which in turn causes log reservation
+sizes to increase and hence a modified XFS driver will fail to mount
+filesystems created by older versions of mkfs.xfs.
+
+Hence this patchset is built on top of Darrick's btree-dynamic-depth
+branch which removes the macro XFS_BTREE_MAXLEVELS and computes
+mp->m_rmap_maxlevels based on the size of an AG.
+
+These patches can also be obtained from
+https://github.com/chandanr/linux.git at branch
+xfs-incompat-extend-extcnt-v2.
+
+I will be posting the changes associated with xfsprogs separately.
+
+Changelog:
+V1 -> V2:
+1. Rebase patches on top of Darrick's btree-dynamic-depth branch.
+2. Add new bulkstat ioctl version to support 64-bit data fork extent
+   counter field.
+3. Introduce new error tag to verify if the old bulkstat ioctls skip
+   reporting inodes with large data fork extent counters.
+
+Chandan Babu R (12):
+  xfs: Move extent count limits to xfs_format.h
+  xfs: Rename MAXEXTNUM, MAXAEXTNUM to XFS_IFORK_EXTCNT_MAXS32,
+    XFS_IFORK_EXTCNT_MAXS16
+  xfs: Introduce xfs_iext_max() helper
+  xfs: Use xfs_extnum_t instead of basic data types
+  xfs: Introduce xfs_dfork_nextents() helper
+  xfs: xfs_dfork_nextents: Return extent count via an out argument
+  xfs: Rename inode's extent counter fields based on their width
+  xfs: Promote xfs_extnum_t and xfs_aextnum_t to 64 and 32-bits
+    respectively
+  xfs: Rename XFS_IOC_BULKSTAT to XFS_IOC_BULKSTAT_V5
+  xfs: Enable bulkstat ioctl to support 64-bit extent counters
+  xfs: Extend per-inode extent counter widths
+  xfs: Error tag to test if v5 bulkstat skips inodes with large extent
+    count
+
+ fs/xfs/libxfs/xfs_bmap.c        | 21 +++----
+ fs/xfs/libxfs/xfs_errortag.h    |  4 +-
+ fs/xfs/libxfs/xfs_format.h      | 42 +++++++++++---
+ fs/xfs/libxfs/xfs_fs.h          |  9 ++-
+ fs/xfs/libxfs/xfs_inode_buf.c   | 82 ++++++++++++++++++++++++----
+ fs/xfs/libxfs/xfs_inode_buf.h   |  2 +
+ fs/xfs/libxfs/xfs_inode_fork.c  | 35 +++++++++---
+ fs/xfs/libxfs/xfs_inode_fork.h  | 22 +++++++-
+ fs/xfs/libxfs/xfs_log_format.h  |  7 ++-
+ fs/xfs/libxfs/xfs_types.h       | 11 +---
+ fs/xfs/scrub/attr_repair.c      |  2 +-
+ fs/xfs/scrub/inode.c            | 97 ++++++++++++++++++++-------------
+ fs/xfs/scrub/inode_repair.c     | 71 +++++++++++++++++-------
+ fs/xfs/scrub/trace.h            | 16 +++---
+ fs/xfs/xfs_error.c              |  3 +
+ fs/xfs/xfs_inode.c              |  4 +-
+ fs/xfs/xfs_inode_item.c         | 15 ++++-
+ fs/xfs/xfs_inode_item_recover.c | 25 +++++++--
+ fs/xfs/xfs_ioctl.c              | 33 +++++++++--
+ fs/xfs/xfs_ioctl32.c            |  7 +++
+ fs/xfs/xfs_itable.c             | 35 ++++++++++--
+ fs/xfs/xfs_itable.h             |  1 +
+ fs/xfs/xfs_trace.h              |  6 +-
+ 23 files changed, 402 insertions(+), 148 deletions(-)
+
+-- 
+2.30.2
+
