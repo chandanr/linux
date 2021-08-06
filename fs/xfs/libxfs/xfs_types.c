@@ -223,16 +223,14 @@ xfs_icount_range(
 	unsigned long long	*max)
 {
 	unsigned long long	nr_inos = 0;
-	struct xfs_perag	*pag;
-	xfs_agnumber_t		agno;
 
 	/* root, rtbitmap, rtsum all live in the first chunk */
 	*min = XFS_INODES_PER_CHUNK;
 
-	for_each_perag(mp, agno, pag) {
+	for_each_perag(mp, iter) {
 		xfs_agino_t	first, last;
 
-		xfs_agino_range(mp, agno, &first, &last);
+		xfs_agino_range(mp, iter.pag->pag_agno, &first, &last);
 		nr_inos += last - first + 1;
 	}
 	*max = nr_inos;

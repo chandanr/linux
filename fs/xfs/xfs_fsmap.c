@@ -573,7 +573,6 @@ __xfs_getfsmap_datadev(
 	void				*priv)
 {
 	struct xfs_mount		*mp = tp->t_mountp;
-	struct xfs_perag		*pag;
 	struct xfs_btree_cur		*bt_cur = NULL;
 	xfs_fsblock_t			start_fsb;
 	xfs_fsblock_t			end_fsb;
@@ -612,13 +611,13 @@ __xfs_getfsmap_datadev(
 	start_ag = XFS_FSB_TO_AGNO(mp, start_fsb);
 	end_ag = XFS_FSB_TO_AGNO(mp, end_fsb);
 
-	for_each_perag_range(mp, start_ag, end_ag, pag) {
+	for_each_perag_range(mp, iter, start_ag, end_ag) {
 		/*
 		 * Set the AG high key from the fsmap high key if this
 		 * is the last AG that we're querying.
 		 */
-		info->pag = pag;
-		if (pag->pag_agno == end_ag) {
+		info->pag = iter.pag;
+		if (iter.pag->pag_agno == end_ag) {
 			info->high.rm_startblock = XFS_FSB_TO_AGBNO(mp,
 					end_fsb);
 			info->high.rm_offset = XFS_BB_TO_FSBT(mp,
@@ -636,14 +635,14 @@ __xfs_getfsmap_datadev(
 			info->agf_bp = NULL;
 		}
 
-		error = xfs_alloc_read_agf(mp, tp, pag->pag_agno, 0,
+		error = xfs_alloc_read_agf(mp, tp, iter.pag->pag_agno, 0,
 				&info->agf_bp);
 		if (error)
 			break;
 
-		trace_xfs_fsmap_low_key(mp, info->dev, pag->pag_agno,
+		trace_xfs_fsmap_low_key(mp, info->dev, iter.pag->pag_agno,
 				&info->low);
-		trace_xfs_fsmap_high_key(mp, info->dev, pag->pag_agno,
+		trace_xfs_fsmap_high_key(mp, info->dev, iter.pag->pag_agno,
 				&info->high);
 
 		error = query_fn(tp, info, &bt_cur, priv);
@@ -654,7 +653,7 @@ __xfs_getfsmap_datadev(
 		 * Set the AG low key to the start of the AG prior to
 		 * moving on to the next AG.
 		 */
-		if (pag->pag_agno == start_ag) {
+		if (iter.pag->pag_agno == start_ag) {
 			info->low.rm_startblock = 0;
 			info->low.rm_owner = 0;
 			info->low.rm_offset = 0;
@@ -666,7 +665,7 @@ __xfs_getfsmap_datadev(
 		 * before we drop the reference to the perag when the loop
 		 * terminates.
 		 */
-		if (pag->pag_agno == end_ag) {
+		if (iter.pag->pag_agno == end_ag) {
 			info->last = true;
 			error = query_fn(tp, info, &bt_cur, priv);
 			if (error)
@@ -682,13 +681,7 @@ __xfs_getfsmap_datadev(
 		xfs_trans_brelse(tp, info->agf_bp);
 		info->agf_bp = NULL;
 	}
-	if (info->pag) {
-		xfs_perag_put(info->pag);
-		info->pag = NULL;
-	} else if (pag) {
-		/* loop termination case */
-		xfs_perag_put(pag);
-	}
+	info->pag = NULL;
 
 	return error;
 }

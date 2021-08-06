@@ -24,8 +24,6 @@ void
 xfs_health_unmount(
 	struct xfs_mount	*mp)
 {
-	struct xfs_perag	*pag;
-	xfs_agnumber_t		agno;
 	unsigned int		sick = 0;
 	unsigned int		checked = 0;
 	bool			warn = false;
@@ -34,10 +32,11 @@ xfs_health_unmount(
 		return;
 
 	/* Measure AG corruption levels. */
-	for_each_perag(mp, agno, pag) {
-		xfs_ag_measure_sickness(pag, &sick, &checked);
+	for_each_perag(mp, iter) {
+		xfs_ag_measure_sickness(iter.pag, &sick, &checked);
 		if (sick) {
-			trace_xfs_ag_unfixed_corruption(mp, agno, sick);
+			trace_xfs_ag_unfixed_corruption(mp, iter.pag->pag_agno,
+					sick);
 			warn = true;
 		}
 	}

@@ -1368,14 +1368,11 @@ void
 xfs_blockgc_stop(
 	struct xfs_mount	*mp)
 {
-	struct xfs_perag	*pag;
-	xfs_agnumber_t		agno;
-
 	if (!xfs_clear_blockgc_enabled(mp))
 		return;
 
-	for_each_perag(mp, agno, pag)
-		cancel_delayed_work_sync(&pag->pag_blockgc_work);
+	for_each_perag(mp, iter)
+		cancel_delayed_work_sync(&iter.pag->pag_blockgc_work);
 	trace_xfs_blockgc_stop(mp, __return_address);
 }
 
@@ -1384,15 +1381,12 @@ void
 xfs_blockgc_start(
 	struct xfs_mount	*mp)
 {
-	struct xfs_perag	*pag;
-	xfs_agnumber_t		agno;
-
 	if (xfs_set_blockgc_enabled(mp))
 		return;
 
 	trace_xfs_blockgc_start(mp, __return_address);
-	for_each_perag_tag(mp, agno, pag, XFS_ICI_BLOCKGC_TAG)
-		xfs_blockgc_queue(pag);
+	for_each_perag_tag(mp, iter, XFS_ICI_BLOCKGC_TAG)
+		xfs_blockgc_queue(iter.pag);
 }
 
 /* Don't try to run block gc on an inode that's in any of these states. */
@@ -1508,9 +1502,6 @@ void
 xfs_blockgc_flush_all(
 	struct xfs_mount	*mp)
 {
-	struct xfs_perag	*pag;
-	xfs_agnumber_t		agno;
-
 	trace_xfs_blockgc_flush_all(mp, __return_address);
 
 	/*
@@ -1518,12 +1509,12 @@ xfs_blockgc_flush_all(
 	 * wasn't queued, it will not be requeued.  Then flush whatever's
 	 * left.
 	 */
-	for_each_perag_tag(mp, agno, pag, XFS_ICI_BLOCKGC_TAG)
-		mod_delayed_work(pag->pag_mount->m_blockgc_wq,
-				&pag->pag_blockgc_work, 0);
+	for_each_perag_tag(mp, iter, XFS_ICI_BLOCKGC_TAG)
+		mod_delayed_work(mp->m_blockgc_wq, &iter.pag->pag_blockgc_work,
+				0);
 
-	for_each_perag_tag(mp, agno, pag, XFS_ICI_BLOCKGC_TAG)
-		flush_delayed_work(&pag->pag_blockgc_work);
+	for_each_perag_tag(mp, iter, XFS_ICI_BLOCKGC_TAG)
+		flush_delayed_work(&iter.pag->pag_blockgc_work);
 
 	xfs_inodegc_flush(mp);
 }

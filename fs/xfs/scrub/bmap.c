@@ -576,8 +576,6 @@ xchk_bmap_check_rmaps(
 	int			whichfork)
 {
 	struct xfs_ifork	*ifp = XFS_IFORK_PTR(sc->ip, whichfork);
-	struct xfs_perag	*pag;
-	xfs_agnumber_t		agno;
 	bool			zero_size;
 	int			error;
 
@@ -609,15 +607,13 @@ xchk_bmap_check_rmaps(
 	    (zero_size || ifp->if_nextents > 0))
 		return 0;
 
-	for_each_perag(sc->mp, agno, pag) {
-		error = xchk_bmap_check_ag_rmaps(sc, whichfork, pag);
+	for_each_perag(sc->mp, iter) {
+		error = xchk_bmap_check_ag_rmaps(sc, whichfork, iter.pag);
 		if (error)
 			break;
 		if (sc->sm->sm_flags & XFS_SCRUB_OFLAG_CORRUPT)
 			break;
 	}
-	if (pag)
-		xfs_perag_put(pag);
 	return error;
 }
 

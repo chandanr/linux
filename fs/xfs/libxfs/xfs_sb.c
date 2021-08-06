@@ -856,18 +856,19 @@ int
 xfs_update_secondary_sbs(
 	struct xfs_mount	*mp)
 {
-	struct xfs_perag	*pag;
-	xfs_agnumber_t		agno = 1;
+	xfs_agnumber_t		last_agno = 0;
 	int			saved_error = 0;
 	int			error = 0;
 	LIST_HEAD		(buffer_list);
 
 	/* update secondary superblocks. */
-	for_each_perag_from(mp, agno, pag) {
+	for_each_perag_from(mp, iter, 1) {
 		struct xfs_buf		*bp;
 
+		last_agno = iter.pag->pag_agno;
+
 		error = xfs_buf_get(mp->m_ddev_targp,
-				 XFS_AG_DADDR(mp, pag->pag_agno, XFS_SB_DADDR),
+				 XFS_AG_DADDR(mp, last_agno, XFS_SB_DADDR),
 				 XFS_FSS_TO_BB(mp, 1), &bp);
 		/*
 		 * If we get an error reading or writing alternate superblocks,
@@ -879,7 +880,7 @@ xfs_update_secondary_sbs(
 		if (error) {
 			xfs_warn(mp,
 		"error allocating secondary superblock for ag %d",
-				pag->pag_agno);
+				last_agno);
 			if (!saved_error)
 				saved_error = error;
 			continue;
@@ -893,14 +894,14 @@ xfs_update_secondary_sbs(
 		xfs_buf_relse(bp);
 
 		/* don't hold too many buffers at once */
-		if (agno % 16)
+		if (last_agno % 16)
 			continue;
 
 		error = xfs_buf_delwri_submit(&buffer_list);
 		if (error) {
 			xfs_warn(mp,
 		"write error %d updating a secondary superblock near ag %d",
-				error, pag->pag_agno);
+				error, last_agno);
 			if (!saved_error)
 				saved_error = error;
 			continue;
@@ -910,7 +911,7 @@ xfs_update_secondary_sbs(
 	if (error) {
 		xfs_warn(mp,
 		"write error %d updating a secondary superblock near ag %d",
-			error, agno);
+			error, last_agno);
 	}
 
 	return saved_error ? saved_error : error;

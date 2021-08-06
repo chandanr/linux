@@ -570,14 +570,12 @@ int
 xfs_fs_reserve_ag_blocks(
 	struct xfs_mount	*mp)
 {
-	xfs_agnumber_t		agno;
-	struct xfs_perag	*pag;
 	int			error = 0;
 	int			err2;
 
 	mp->m_finobt_nores = false;
-	for_each_perag(mp, agno, pag) {
-		err2 = xfs_ag_resv_init(pag, NULL);
+	for_each_perag(mp, iter) {
+		err2 = xfs_ag_resv_init(iter.pag, NULL);
 		if (err2 && !error)
 			error = err2;
 	}
@@ -598,13 +596,11 @@ int
 xfs_fs_unreserve_ag_blocks(
 	struct xfs_mount	*mp)
 {
-	xfs_agnumber_t		agno;
-	struct xfs_perag	*pag;
 	int			error = 0;
 	int			err2;
 
-	for_each_perag(mp, agno, pag) {
-		err2 = xfs_ag_resv_free(pag);
+	for_each_perag(mp, iter) {
+		err2 = xfs_ag_resv_free(iter.pag);
 		if (err2 && !error)
 			error = err2;
 	}

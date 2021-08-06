@@ -755,19 +755,15 @@ int
 xfs_reflink_recover_cow(
 	struct xfs_mount	*mp)
 {
-	struct xfs_perag	*pag;
-	xfs_agnumber_t		agno;
 	int			error = 0;
 
 	if (!xfs_sb_version_hasreflink(&mp->m_sb))
 		return 0;
 
-	for_each_perag(mp, agno, pag) {
-		error = xfs_refcount_recover_cow_leftovers(mp, pag);
-		if (error) {
-			xfs_perag_put(pag);
+	for_each_perag(mp, iter) {
+		error = xfs_refcount_recover_cow_leftovers(mp, iter.pag);
+		if (error)
 			break;
-		}
 	}
 
 	return error;

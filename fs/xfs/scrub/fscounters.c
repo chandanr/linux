@@ -67,21 +67,21 @@ xchk_fscount_warmup(
 	struct xfs_mount	*mp = sc->mp;
 	struct xfs_buf		*agi_bp = NULL;
 	struct xfs_buf		*agf_bp = NULL;
-	struct xfs_perag	*pag = NULL;
-	xfs_agnumber_t		agno;
 	int			error = 0;
 
-	for_each_perag(mp, agno, pag) {
+	for_each_perag(mp, iter) {
 		if (xchk_should_terminate(sc, &error))
 			break;
-		if (pag->pagi_init && pag->pagf_init)
+		if (iter.pag->pagi_init && iter.pag->pagf_init)
 			continue;
 
 		/* Lock both AG headers. */
-		error = xfs_ialloc_read_agi(mp, sc->tp, agno, &agi_bp);
+		error = xfs_ialloc_read_agi(mp, sc->tp, iter.pag->pag_agno,
+				&agi_bp);
 		if (error)
 			break;
-		error = xfs_alloc_read_agf(mp, sc->tp, agno, 0, &agf_bp);
+		error = xfs_alloc_read_agf(mp, sc->tp, iter.pag->pag_agno, 0,
+				&agf_bp);
 		if (error)
 			break;
 
@@ -89,7 +89,7 @@ xchk_fscount_warmup(
 		 * These are supposed to be initialized by the header read
 		 * function.
 		 */
-		if (!pag->pagi_init || !pag->pagf_init) {
+		if (!iter.pag->pagi_init || !iter.pag->pagf_init) {
 			error = -EFSCORRUPTED;
 			break;
 		}
@@ -104,8 +104,6 @@ xchk_fscount_warmup(
 		xfs_buf_relse(agf_bp);
 	if (agi_bp)
 		xfs_buf_relse(agi_bp);
-	if (pag)
-		xfs_perag_put(pag);
 	return error;
 }
 
@@ -179,9 +177,7 @@ xchk_fscount_aggregate_agcounts(
 	struct xchk_fscounters	*fsc)
 {
 	struct xfs_mount	*mp = sc->mp;
-	struct xfs_perag	*pag;
 	uint64_t		delayed;
-	xfs_agnumber_t		agno;
 	int			tries = 8;
 	int			error = 0;
 
@@ -190,27 +186,28 @@ retry:
 	fsc->ifree = 0;
 	fsc->fdblocks = 0;
 
-	for_each_perag(mp, agno, pag) {
+	for_each_perag(mp, iter) {
 		if (xchk_should_terminate(sc, &error))
 			break;
 
 		/* This somehow got unset since the warmup? */
-		if (!pag->pagi_init || !pag->pagf_init) {
+		if (!iter.pag->pagi_init || !iter.pag->pagf_init) {
 			error = -EFSCORRUPTED;
 			break;
 		}
 
 		/* Count all the inodes */
-		fsc->icount += pag->pagi_count;
-		fsc->ifree += pag->pagi_freecount;
+		fsc->icount += iter.pag->pagi_count;
+		fsc->ifree += iter.pag->pagi_freecount;
 
 		/* Add up the free/freelist/bnobt/cntbt blocks */
-		fsc->fdblocks += pag->pagf_freeblks;
-		fsc->fdblocks += pag->pagf_flcount;
+		fsc->fdblocks += iter.pag->pagf_freeblks;
+		fsc->fdblocks += iter.pag->pagf_flcount;
 		if (xfs_sb_version_haslazysbcount(&sc->mp->m_sb)) {
-			fsc->fdblocks += pag->pagf_btreeblks;
+			fsc->fdblocks += iter.pag->pagf_btreeblks;
 		} else {
-			error = xchk_fscount_btreeblks(sc, fsc, agno);
+			error = xchk_fscount_btreeblks(sc, fsc,
+					iter.pag->pag_agno);
 			if (error)
 				break;
 		}
@@ -219,12 +216,10 @@ retry:
 		 * Per-AG reservations are taken out of the incore counters,
 		 * so they must be left out of the free blocks computation.
 		 */
-		fsc->fdblocks -= pag->pag_meta_resv.ar_reserved;
-		fsc->fdblocks -= pag->pag_rmapbt_resv.ar_orig_reserved;
+		fsc->fdblocks -= iter.pag->pag_meta_resv.ar_reserved;
+		fsc->fdblocks -= iter.pag->pag_rmapbt_resv.ar_orig_reserved;
 
 	}
-	if (pag)
-		xfs_perag_put(pag);
 	if (error)
 		return error;
 

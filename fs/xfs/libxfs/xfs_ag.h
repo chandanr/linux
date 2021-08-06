@@ -116,35 +116,53 @@ void xfs_perag_put(struct xfs_perag *pag);
 
 /*
  * Perag iteration APIs
- *
- * XXX: for_each_perag_range() usage really needs an iterator to clean up when
- * we terminate at end_agno because we may have taken a reference to the perag
- * beyond end_agno. Right now callers have to be careful to catch and clean that
- * up themselves. This is not necessary for the callers of for_each_perag() and
- * for_each_perag_from() because they terminate at sb_agcount where there are
- * no perag structures in tree beyond end_agno.
  */
-#define for_each_perag_range(mp, next_agno, end_agno, pag) \
-	for ((pag) = xfs_perag_get((mp), (next_agno)); \
-		(pag) != NULL && (next_agno) <= (end_agno); \
-		(next_agno) = (pag)->pag_agno + 1, \
-		xfs_perag_put(pag), \
-		(pag) = xfs_perag_get((mp), (next_agno)))
+struct xfs_perag_iter {
+	struct xfs_perag	*pag;
+	xfs_agnumber_t		__agno;
+};
 
-#define for_each_perag_from(mp, next_agno, pag) \
-	for_each_perag_range((mp), (next_agno), (mp)->m_sb.sb_agcount, (pag))
+static inline void
+xfs_perag_iter_cleanup(struct xfs_perag_iter *pagit)
+{
+	if (pagit->pag)
+		xfs_perag_put(pagit->pag);
+	pagit->pag = NULL;
+	pagit->__agno = NULLAGNUMBER;
+}
 
+#define XFS_PERAG_ITER_INIT(mp, name, first_agno)	\
+	struct xfs_perag_iter name \
+			__attribute__((__cleanup__(xfs_perag_iter_cleanup))) = \
+			{ .__agno = (first_agno), \
+			  .pag = xfs_perag_get((mp), (first_agno)), }
 
-#define for_each_perag(mp, agno, pag) \
-	(agno) = 0; \
-	for_each_perag_from((mp), (agno), (pag))
+#define XFS_PERAG_TAG_ITER_INIT(mp, name, first_agno, tag)	\
+	struct xfs_perag_iter name \
+			__attribute__((__cleanup__(xfs_perag_iter_cleanup))) = \
+			{ .__agno = (first_agno), \
+			  .pag = xfs_perag_get_tag((mp), (first_agno), (tag)), }
 
-#define for_each_perag_tag(mp, agno, pag, tag) \
-	for ((agno) = 0, (pag) = xfs_perag_get_tag((mp), 0, (tag)); \
-		(pag) != NULL; \
-		(agno) = (pag)->pag_agno + 1, \
-		xfs_perag_put(pag), \
-		(pag) = xfs_perag_get_tag((mp), (agno), (tag)))
+/* Perag iteration APIs */
+#define for_each_perag_range(mp, name, start_agno, end_agno) \
+	for (XFS_PERAG_ITER_INIT((mp), (name), (start_agno)); \
+		(name).pag != NULL && (name).__agno <= (end_agno); \
+		(name).__agno = (name).pag->pag_agno + 1, \
+		xfs_perag_put((name).pag), \
+		(name).pag = xfs_perag_get((mp), (name).__agno))
+
+#define for_each_perag_from(mp, name, start_agno) \
+	for_each_perag_range((mp), (name), (start_agno), (mp)->m_sb.sb_agcount)
+
+#define for_each_perag(mp, name) \
+	for_each_perag_from((mp), (name), 0)
+
+#define for_each_perag_tag(mp, name, tag) \
+	for (XFS_PERAG_TAG_ITER_INIT((mp), (name), 0, (tag)); \
+		(name).pag != NULL; \
+		(name).__agno = (name).pag->pag_agno + 1, \
+		xfs_perag_put((name).pag), \
+		(name).pag = xfs_perag_get_tag((mp), (name).__agno, (tag)))
 
 struct aghdr_init_data {
 	/* per ag data */
