@@ -31,8 +31,11 @@ int xfs_iwalk_threaded(struct xfs_mount *mp, xfs_ino_t startino,
 /* Signal that we can return metadata directories. */
 #define XFS_IWALK_METADIR	(0x2)
 
-#define XFS_IWALK_FLAGS_ALL	(XFS_IWALK_SAME_AG | \
-				 XFS_IWALK_METADIR)
+#define XFS_IWALK_NREXT64	(0x4)
+
+#define XFS_IWALK_FLAGS_ALL	(XFS_IWALK_SAME_AG |	\
+				 XFS_IWALK_METADIR |	\
+				 XFS_IWALK_NREXT64)
 
 /* Walk all inode btree records in the filesystem starting from @startino. */
 typedef int (*xfs_inobt_walk_fn)(struct xfs_mount *mp, struct xfs_trans *tp,
