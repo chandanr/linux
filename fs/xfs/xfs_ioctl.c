@@ -839,6 +839,10 @@ xfs_bulk_ireq_setup(
 {
 	if (hdr->icount == 0 ||
 	    (hdr->flags & ~XFS_BULK_IREQ_FLAGS_ALL) ||
+	    ((hdr->flags & XFS_BULK_IREQ_BULKSTAT) &&
+	     (hdr->bulkstat_flags & ~XFS_BULK_IREQ_BULKSTAT_FLAGS_ALL)) ||
+	    (!(hdr->flags & XFS_BULK_IREQ_BULKSTAT) &&
+	     (hdr->bulkstat_flags != 0)) ||
 	    memchr_inv(hdr->reserved, 0, sizeof(hdr->reserved)))
 		return -EINVAL;
 
@@ -897,6 +901,9 @@ xfs_bulk_ireq_setup(
 	if (hdr->flags & XFS_BULK_IREQ_METADIR)
 		breq->flags |= XFS_IWALK_METADIR;
 
+	if (hdr->flags & XFS_BULK_IREQ_BULKSTAT)
+		if (hdr->bulkstat_flags & XFS_BULK_IREQ_BULKSTAT_NREXT64)
+			breq->flags |= XFS_IBULK_NREXT64;
 	return 0;
 }
 
