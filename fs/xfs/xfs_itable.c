@@ -20,6 +20,7 @@
 #include "xfs_icache.h"
 #include "xfs_health.h"
 #include "xfs_trans.h"
+#include "xfs_errortag.h"
 
 /*
  * Bulk Stat
@@ -64,17 +65,19 @@ xfs_bulkstat_one_int(
 	struct xfs_inode	*ip;		/* incore inode pointer */
 	struct inode		*inode;
 	struct xfs_bulkstat	*buf = bc->buf;
-	int			error = -EINVAL;
+	xfs_extnum_t		nextents;
+	int			error1 = -EINVAL;
+	int			error2;
 
 	if (xfs_internal_inum(mp, ino))
 		goto out_advance;
 
-	error = xfs_iget(mp, tp, ino,
+	error1 = xfs_iget(mp, tp, ino,
 			 (XFS_IGET_DONTCACHE | XFS_IGET_UNTRUSTED),
 			 XFS_ILOCK_SHARED, &ip);
-	if (error == -ENOENT || error == -EINVAL)
+	if (error1 == -ENOENT || error1 == -EINVAL)
 		goto out_advance;
-	if (error)
+	if (error1)
 		goto out;
 
 	ASSERT(ip != NULL);
@@ -102,7 +105,29 @@ xfs_bulkstat_one_int(
 
 	buf->bs_xflags = xfs_ip2xflags(ip);
 	buf->bs_extsize_blks = ip->i_extsize;
-	buf->bs_extents = xfs_ifork_nextents(&ip->i_df);
+
+	nextents = xfs_ifork_nextents(&ip->i_df);
+	if (!(bc->breq->flags & XFS_IBULK_NREXT64)) {
+		xfs_extnum_t max_nextents = XFS_MAX_EXTCNT_DATA_FORK_OLD;
+
+		if (unlikely(XFS_TEST_ERROR(false, mp,
+				XFS_ERRTAG_REDUCE_MAX_IEXTENTS)))
+			max_nextents = 10;
+
+		if (nextents > max_nextents) {
+			xfs_iunlock(ip, XFS_ILOCK_SHARED);
+			xfs_irele(ip);
+			error1 = -EOVERFLOW;
+			if (bc->breq->ocount > 0)
+				goto out;
+			buf->bs_extents = 0;
+		} else {
+			buf->bs_extents = nextents;
+		}
+	} else {
+		buf->bs_extents64 = nextents;
+	}
+
 	xfs_bulkstat_health(ip, buf);
 	buf->bs_aextents = xfs_ifork_nextents(ip->i_afp);
 	buf->bs_forkoff = XFS_IFORK_BOFF(ip);
@@ -136,10 +161,10 @@ xfs_bulkstat_one_int(
 	xfs_iunlock(ip, XFS_ILOCK_SHARED);
 	xfs_irele(ip);
 
-	error = bc->formatter(bc->breq, buf);
-	if (error == -ECANCELED)
+	error2 = bc->formatter(bc->breq, buf);
+	if (error2 == -ECANCELED && error1 != -EOVERFLOW)
 		goto out_advance;
-	if (error)
+	if (error1)
 		goto out;
 
 out_advance:
@@ -151,7 +176,7 @@ out_advance:
 	 */
 	bc->breq->startino = ino + 1;
 out:
-	return error;
+	return error1;
 }
 
 /* Bulkstat a single inode. */
