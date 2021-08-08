@@ -20,6 +20,7 @@
 #include "xfs_icache.h"
 #include "xfs_health.h"
 #include "xfs_trans.h"
+#include "xfs_errortag.h"
 
 /*
  * Bulk Stat
@@ -74,6 +75,7 @@ xfs_bulkstat_one_int(
 	struct xfs_inode	*ip;		/* incore inode pointer */
 	struct inode		*inode;
 	struct xfs_bulkstat	*buf = bc->buf;
+	xfs_extnum_t		nextents;
 	int			error = -EINVAL;
 
 	error = xfs_iget(mp, tp, ino,
@@ -134,7 +136,26 @@ xfs_bulkstat_one_int(
 
 	buf->bs_xflags = xfs_ip2xflags(ip);
 	buf->bs_extsize_blks = ip->i_extsize;
-	buf->bs_extents = xfs_ifork_nextents(&ip->i_df);
+
+	nextents = xfs_ifork_nextents(&ip->i_df);
+	if (!(bc->breq->flags & XFS_IBULK_NREXT64)) {
+		xfs_extnum_t max_nextents = XFS_IFORK_EXTCNT_MAXS32;
+
+		if (unlikely(XFS_TEST_ERROR(false, mp,
+				XFS_ERRTAG_REDUCE_MAX_IEXTENTS)))
+			max_nextents = 10;
+
+		if (nextents > max_nextents) {
+			xfs_iunlock(ip, XFS_ILOCK_SHARED);
+			xfs_irele(ip);
+			error = -EINVAL;
+			goto out_advance;
+		}
+		buf->bs_extents32 = nextents;
+	} else {
+		buf->bs_extents64 = nextents;
+	}
+
 	xfs_bulkstat_health(ip, buf);
 	buf->bs_aextents = xfs_ifork_nextents(ip->i_afp);
 	buf->bs_forkoff = XFS_IFORK_BOFF(ip);
@@ -356,7 +377,7 @@ xfs_bulkstat_to_bstat(
 	bs1->bs_blocks = bstat->bs_blocks;
 	bs1->bs_xflags = bstat->bs_xflags;
 	bs1->bs_extsize = XFS_FSB_TO_B(mp, bstat->bs_extsize_blks);
-	bs1->bs_extents = bstat->bs_extents;
+	bs1->bs_extents = bstat->bs_extents32;
 	bs1->bs_gen = bstat->bs_gen;
 	bs1->bs_projid_lo = bstat->bs_projectid & 0xFFFF;
 	bs1->bs_forkoff = bstat->bs_forkoff;
