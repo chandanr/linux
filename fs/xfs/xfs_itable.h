@@ -22,6 +22,8 @@ struct xfs_ibulk {
 /* Signal that we can return metadata directories. */
 #define XFS_IBULK_METADIR	(XFS_IWALK_METADIR)
 
+#define XFS_IBULK_NREXT64	(XFS_IWALK_NREXT64)
+
 /*
  * Advance the user buffer pointer by one record of the given size.  If the
  * buffer is now full, return the appropriate error code.
