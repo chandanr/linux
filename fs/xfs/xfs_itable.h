@@ -13,11 +13,13 @@ struct xfs_ibulk {
 	xfs_ino_t		startino; /* start with this inode */
 	unsigned int		icount;   /* number of elements in ubuffer */
 	unsigned int		ocount;   /* number of records returned */
-	unsigned int		flags;    /* see XFS_IBULK_FLAG_* */
+	unsigned long long	flags;    /* see XFS_IBULK_FLAG_* */
 };
 
 /* Only iterate within the same AG as startino */
-#define XFS_IBULK_SAME_AG	(XFS_IWALK_SAME_AG)
+#define XFS_IBULK_SAME_AG	(1ULL << 0)
+
+#define XFS_IBULK_NREXT64	(1ULL << 32)
 
 /*
  * Advance the user buffer pointer by one record of the given size.  If the
