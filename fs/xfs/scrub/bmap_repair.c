@@ -92,7 +92,7 @@ xrep_bmap_from_rmap(
 
 	do {
 		irec.br_blockcount = min_t(xfs_filblks_t, blockcount,
-				MAXEXTLEN);
+				XFS_MAX_EXTLEN);
 		xfs_bmbt_disk_set_all(&rbe, &irec);
 
 		trace_xrep_bmap_found(rb->sc->ip, rb->whichfork, &irec);
