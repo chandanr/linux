@@ -757,7 +757,7 @@ can_merge(
 	if (b1->br_startoff   + b1->br_blockcount == b2->br_startoff &&
 	    b1->br_startblock + b1->br_blockcount == b2->br_startblock &&
 	    b1->br_state			  == b2->br_state &&
-	    b1->br_blockcount + b2->br_blockcount <= MAXEXTLEN)
+	    b1->br_blockcount + b2->br_blockcount <= XFS_MAX_EXTLEN)
 		return true;
 
 	return false;
@@ -799,7 +799,7 @@ delta_nextents_step(
 		state |= CRIGHT_CONTIG;
 	if ((state & CBOTH_CONTIG) == CBOTH_CONTIG &&
 	    left->br_startblock + curr->br_startblock +
-					right->br_startblock > MAXEXTLEN)
+					right->br_startblock > XFS_MAX_EXTLEN)
 		state &= ~CRIGHT_CONTIG;
 
 	if (nhole)
@@ -810,7 +810,7 @@ delta_nextents_step(
 		state |= NRIGHT_CONTIG;
 	if ((state & NBOTH_CONTIG) == NBOTH_CONTIG &&
 	    left->br_startblock + new->br_startblock +
-					right->br_startblock > MAXEXTLEN)
+					right->br_startblock > XFS_MAX_EXTLEN)
 		state &= ~NRIGHT_CONTIG;
 
 	switch (state & (CLEFT_CONTIG | CRIGHT_CONTIG | CHOLE)) {
