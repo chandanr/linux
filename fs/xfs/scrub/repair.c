@@ -1072,7 +1072,7 @@ xrep_reap_extent(
 	int			error = 0;
 
 	ASSERT(sc->ip != NULL || agno == sc->sa.agno);
-	ASSERT(len <= MAXEXTLEN);
+	ASSERT(len <= XFS_MAX_EXTLEN);
 
 	/*
 	 * If we are repairing per-inode metadata, we need to read in the AGF
