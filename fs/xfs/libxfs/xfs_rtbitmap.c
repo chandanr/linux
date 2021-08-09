@@ -1015,7 +1015,7 @@ xfs_rtfree_extent(
 /*
  * Free some blocks in the realtime subvolume.  rtbno and rtlen are in units of
  * rt blocks, not rt extents; must be aligned to the rt extent size; and rtlen
- * cannot exceed MAXEXTLEN.
+ * cannot exceed XFS_MAX_EXTLEN.
  */
 int
 xfs_rtfree_blocks(
@@ -1028,7 +1028,7 @@ xfs_rtfree_blocks(
 	xfs_filblks_t		len;
 	xfs_extlen_t		mod;
 
-	ASSERT(rtlen <= MAXEXTLEN);
+	ASSERT(rtlen <= XFS_MAX_EXTLEN);
 
 	len = div_u64_rem(rtlen, mp->m_sb.sb_rextsize, &mod);
 	if (mod) {
