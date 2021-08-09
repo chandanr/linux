@@ -1127,7 +1127,7 @@ xrep_reap_extent(
 	xfs_agblock_t		agbno_next = agbno + len;
 	int			error = 0;
 
-	ASSERT(len <= MAXEXTLEN);
+	ASSERT(len <= XFS_MAX_EXTLEN);
 
 	if (sc->ip != NULL) {
 		/*
