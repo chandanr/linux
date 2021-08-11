@@ -254,6 +254,7 @@ typedef struct xfs_fsop_resblks {
 #define XFS_FSOP_GEOM_FLAGS_INOBTCNT	(1 << 22) /* inobt btree counter */
 #define XFS_FSOP_GEOM_FLAGS_ATOMIC_SWAP	(1 << 23) /* atomic swapext */
 #define XFS_FSOP_GEOM_FLAGS_METADIR	(1 << 24) /* metadata directories */
+#define XFS_FSOP_GEOM_FLAGS_NREXT64	(1 << 25) /* 64-bit extent counter */
 
 /*
  * Minimum and maximum sizes need for growth checks.
