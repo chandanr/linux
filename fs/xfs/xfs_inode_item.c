@@ -385,8 +385,6 @@ xfs_inode_to_log_dinode(
 	to->di_size = ip->i_disk_size;
 	to->di_nblocks = ip->i_nblocks;
 	to->di_extsize = ip->i_extsize;
-	to->di_nextents32 = xfs_ifork_nextents(&ip->i_df);
-	to->di_nextents16 = xfs_ifork_nextents(ip->i_afp);
 	to->di_forkoff = ip->i_forkoff;
 	to->di_aformat = xfs_ifork_format(ip->i_afp);
 	to->di_flags = ip->i_diflags;
@@ -402,6 +400,16 @@ xfs_inode_to_log_dinode(
 		to->di_crtime = xfs_inode_to_log_dinode_ts(ip, ip->i_crtime);
 		to->di_flags2 = ip->i_diflags2;
 		to->di_cowextsize = ip->i_cowextsize;
+		if (xfs_inode_has_nrext64(ip)) {
+			to->di_nextents64 = xfs_ifork_nextents(&ip->i_df);
+			to->di_nextents32 = xfs_ifork_nextents(ip->i_afp);
+			to->di_nextents16 = 0;
+		} else {
+			to->di_nextents64 = 0;
+			to->di_nextents32 = xfs_ifork_nextents(&ip->i_df);
+			to->di_nextents16 = xfs_ifork_nextents(ip->i_afp);
+		}
+
 		to->di_ino = ip->i_ino;
 		to->di_lsn = lsn;
 		memset(to->di_pad2, 0, sizeof(to->di_pad2));
@@ -410,6 +418,8 @@ xfs_inode_to_log_dinode(
 	} else {
 		to->di_version = 2;
 		to->di_flushiter = ip->i_flushiter;
+		to->di_nextents32 = xfs_ifork_nextents(&ip->i_df);
+		to->di_nextents16 = xfs_ifork_nextents(ip->i_afp);
 	}
 }
 
