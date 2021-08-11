@@ -167,8 +167,6 @@ xfs_log_dinode_to_disk(
 	to->di_size = cpu_to_be64(from->di_size);
 	to->di_nblocks = cpu_to_be64(from->di_nblocks);
 	to->di_extsize = cpu_to_be32(from->di_extsize);
-	to->di_nextents32 = cpu_to_be32(from->di_nextents32);
-	to->di_nextents16 = cpu_to_be16(from->di_nextents16);
 	to->di_forkoff = from->di_forkoff;
 	to->di_aformat = from->di_aformat;
 	to->di_dmevmask = cpu_to_be32(from->di_dmevmask);
@@ -182,12 +180,17 @@ xfs_log_dinode_to_disk(
 							  from->di_crtime);
 		to->di_flags2 = cpu_to_be64(from->di_flags2);
 		to->di_cowextsize = cpu_to_be32(from->di_cowextsize);
+		to->di_nextents64 = cpu_to_be64(from->di_nextents64);
+		to->di_nextents32 = cpu_to_be32(from->di_nextents32);
+		to->di_nextents16 = cpu_to_be16(from->di_nextents16);
 		to->di_ino = cpu_to_be64(from->di_ino);
 		to->di_lsn = cpu_to_be64(lsn);
 		memcpy(to->di_pad2, from->di_pad2, sizeof(to->di_pad2));
 		uuid_copy(&to->di_uuid, &from->di_uuid);
 		to->di_flushiter = 0;
 	} else {
+		to->di_nextents32 = cpu_to_be32(from->di_nextents32);
+		to->di_nextents16 = cpu_to_be16(from->di_nextents16);
 		to->di_flushiter = cpu_to_be16(from->di_flushiter);
 	}
 }
@@ -203,6 +206,8 @@ xlog_recover_inode_commit_pass2(
 	struct xfs_mount		*mp = log->l_mp;
 	struct xfs_buf			*bp;
 	struct xfs_dinode		*dip;
+	xfs_extnum_t                    nextents;
+	xfs_aextnum_t                   anextents;
 	int				len;
 	char				*src;
 	char				*dest;
@@ -342,16 +347,25 @@ xlog_recover_inode_commit_pass2(
 			goto out_release;
 		}
 	}
-	if (unlikely(ldip->di_nextents32 + ldip->di_nextents16 > ldip->di_nblocks)) {
+
+	if (xfs_sb_version_has_v3inode(&mp->m_sb) &&
+		ldip->di_flags2 & XFS_DIFLAG2_NREXT64) {
+		nextents = ldip->di_nextents64;
+		anextents = ldip->di_nextents32;
+	} else {
+		nextents = ldip->di_nextents32;
+		anextents = ldip->di_nextents16;
+	}
+
+	if (unlikely(nextents + anextents > ldip->di_nblocks)) {
 		XFS_CORRUPTION_ERROR("xlog_recover_inode_pass2(5)",
 				     XFS_ERRLEVEL_LOW, mp, ldip,
 				     sizeof(*ldip));
 		xfs_alert(mp,
 	"%s: Bad inode log record, rec ptr "PTR_FMT", dino ptr "PTR_FMT", "
-	"dino bp "PTR_FMT", ino %Ld, total extents = %d, nblocks = %Ld",
+	"dino bp "PTR_FMT", ino %Ld, total extents = %llu, nblocks = %Ld",
 			__func__, item, dip, bp, in_f->ilf_ino,
-			ldip->di_nextents32 + ldip->di_nextents16,
-			ldip->di_nblocks);
+			nextents + anextents, ldip->di_nblocks);
 		error = -EFSCORRUPTED;
 		goto out_release;
 	}
