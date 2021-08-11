@@ -144,6 +144,12 @@ xfs_trans_log_inode(
 		flags |= XFS_ILOG_CORE;
 	}
 
+	if ((flags & XFS_ILOG_CORE) &&
+	    xfs_has_nrext64(ip->i_mount) &&
+	    !xfs_inode_has_nrext64(ip)) {
+		ip->i_diflags2 |= XFS_DIFLAG2_NREXT64;
+	}
+
 	/*
 	 * Inode verifiers do not check that the extent size hint is an integer
 	 * multiple of the rt extent size on a directory with both rtinherit

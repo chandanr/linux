@@ -388,6 +388,7 @@ xfs_sb_has_ro_compat_feature(
 #define XFS_SB_FEAT_INCOMPAT_BIGTIME	(1 << 3)	/* large timestamps */
 #define XFS_SB_FEAT_INCOMPAT_NEEDSREPAIR (1 << 4)	/* needs xfs_repair */
 #define XFS_SB_FEAT_INCOMPAT_METADIR	(1 << 5)	/* metadata dir tree */
+#define XFS_SB_FEAT_INCOMPAT_NREXT64	(1 << 6)	/* 64-bit data fork extent counter */
 #define XFS_SB_FEAT_INCOMPAT_ALL \
 		(XFS_SB_FEAT_INCOMPAT_FTYPE|	\
 		 XFS_SB_FEAT_INCOMPAT_SPINODES|	\
@@ -802,6 +803,16 @@ typedef struct xfs_dinode {
 	__be64		di_size;	/* number of bytes in file */
 	__be64		di_nblocks;	/* # of direct & btree blocks used */
 	__be32		di_extsize;	/* basic/minimum extent size for file */
+
+	/*
+	 * On a extcnt64bit filesystem, di_nextents64 holds the data fork
+	 * extent count, di_nextents32 holds the attr fork extent count,
+	 * and di_nextents16 must be zero.
+	 *
+	 * Otherwise, di_nextents32 holds the data fork extent count,
+	 * di_nextents16 holds the attr fork extent count, and di_nextents64
+	 * must be zero.
+	 */
 	__be32		di_nextents32;	/* number of extents in data fork */
 	__be16		di_nextents16;	/* number of extents in attribute fork*/
 	__u8		di_forkoff;	/* attr fork offs, <<3 for 64b align */
@@ -820,7 +831,8 @@ typedef struct xfs_dinode {
 	__be64		di_lsn;		/* flush sequence */
 	__be64		di_flags2;	/* more random flags */
 	__be32		di_cowextsize;	/* basic cow extent size for file */
-	__u8		di_pad2[12];	/* more padding for future expansion */
+	__u8		di_pad2[4];	/* more padding for future expansion */
+	__be64		di_nextents64;
 
 	/* fields only written to during inode creation */
 	xfs_timestamp_t	di_crtime;	/* time created */
@@ -876,6 +888,8 @@ enum xfs_dinode_fmt {
  * Max values for extlen and disk inode's extent counters.
  */
 #define	MAXEXTLEN		((xfs_extlen_t)0x1fffff)	/* 21 bits */
+#define XFS_IFORK_EXTCNT_MAXU48	((xfs_extnum_t)0xffffffffffff)	/* Unsigned 48-bits */
+#define XFS_IFORK_EXTCNT_MAXU32	((xfs_aextnum_t)0xffffffff)	/* Unsigned 32-bits */
 #define XFS_IFORK_EXTCNT_MAXS32 ((xfs_extnum_t)0x7fffffff)	/* Signed 32-bits */
 #define XFS_IFORK_EXTCNT_MAXS16 ((xfs_aextnum_t)0x7fff)		/* Signed 16-bits */
 
@@ -930,32 +944,6 @@ enum xfs_dinode_fmt {
 	((w) == XFS_DATA_FORK ? \
 		(dip)->di_format : \
 		(dip)->di_aformat)
-
-static inline int
-xfs_dfork_nextents(
-	struct xfs_dinode	*dip,
-	int			whichfork,
-	xfs_extnum_t		*nextents)
-{
-	int			error = 0;
-
-	switch (whichfork) {
-	case XFS_DATA_FORK:
-		*nextents = be32_to_cpu(dip->di_nextents32);
-		break;
-
-	case XFS_ATTR_FORK:
-		*nextents = be16_to_cpu(dip->di_nextents16);
-		break;
-
-	default:
-		ASSERT(0);
-		error = -EFSCORRUPTED;
-		break;
-	}
-
-	return error;
-}
 
 /*
  * For block and character special files the 32bit dev_t is stored at the
@@ -1023,6 +1011,7 @@ static inline void xfs_dinode_put_rdev(struct xfs_dinode *dip, xfs_dev_t rdev)
 #define XFS_DIFLAG2_COWEXTSIZE_BIT   2  /* copy on write extent size hint */
 #define XFS_DIFLAG2_BIGTIME_BIT	3	/* big timestamps */
 #define XFS_DIFLAG2_METADATA_BIT 4	/* filesystem metadata */
+#define XFS_DIFLAG2_NREXT64_BIT 5	/* 64-bit extent counter enabled */
 
 #define XFS_DIFLAG2_DAX		(1 << XFS_DIFLAG2_DAX_BIT)
 #define XFS_DIFLAG2_REFLINK     (1 << XFS_DIFLAG2_REFLINK_BIT)
@@ -1053,15 +1042,57 @@ static inline void xfs_dinode_put_rdev(struct xfs_dinode *dip, xfs_dev_t rdev)
  * - Metadata directory entries must have correct ftype.
  */
 #define XFS_DIFLAG2_METADATA	(1 << XFS_DIFLAG2_METADATA_BIT)
+#define XFS_DIFLAG2_NREXT64	(1 << XFS_DIFLAG2_NREXT64_BIT)
+
 
 #define XFS_DIFLAG2_ANY \
 	(XFS_DIFLAG2_DAX | XFS_DIFLAG2_REFLINK | XFS_DIFLAG2_COWEXTSIZE | \
-	 XFS_DIFLAG2_BIGTIME | XFS_DIFLAG2_METADATA)
+	 XFS_DIFLAG2_BIGTIME | XFS_DIFLAG2_METADATA | XFS_DIFLAG2_NREXT64)
 
 static inline bool xfs_dinode_has_bigtime(const struct xfs_dinode *dip)
 {
 	return dip->di_version >= 3 &&
 	       (dip->di_flags2 & cpu_to_be64(XFS_DIFLAG2_BIGTIME));
+}
+
+static inline bool xfs_dinode_has_nrext64(const struct xfs_dinode *dip)
+{
+	return dip->di_version >= 3 &&
+	       (dip->di_flags2 & cpu_to_be64(XFS_DIFLAG2_NREXT64));
+}
+
+static inline int
+xfs_dfork_nextents(
+	struct xfs_dinode	*dip,
+	int			whichfork,
+	xfs_extnum_t		*nextents)
+{
+	int			error = 0;
+	bool			inode_has_nrext64;
+
+	inode_has_nrext64 = xfs_dinode_has_nrext64(dip);
+
+	if (inode_has_nrext64 && dip->di_nextents16 != 0)
+		return -EFSCORRUPTED;
+
+	switch (whichfork) {
+	case XFS_DATA_FORK:
+		*nextents = inode_has_nrext64 ? be64_to_cpu(dip->di_nextents64) :
+			be32_to_cpu(dip->di_nextents32);
+		break;
+
+	case XFS_ATTR_FORK:
+		*nextents = inode_has_nrext64 ? be32_to_cpu(dip->di_nextents32) :
+			be16_to_cpu(dip->di_nextents16);
+		break;
+
+	default:
+		ASSERT(0);
+		error = -EFSCORRUPTED;
+		break;
+	}
+
+	return error;
 }
 
 /*
