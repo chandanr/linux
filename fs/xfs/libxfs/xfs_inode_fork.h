@@ -133,26 +133,43 @@ static inline int8_t xfs_ifork_format(struct xfs_ifork *ifp)
 	return ifp->if_format;
 }
 
-static inline xfs_extnum_t xfs_iext_max_nextents(int whichfork)
+static inline xfs_extnum_t xfs_iext_max_nextents(bool has_big_extcnt,
+				int whichfork)
 {
-	if (whichfork == XFS_DATA_FORK || whichfork == XFS_COW_FORK)
-		return MAXEXTNUM;
+	switch (whichfork) {
+	case XFS_DATA_FORK:
+	case XFS_COW_FORK:
+		return has_big_extcnt ? XFS_MAX_EXTCNT_DATA_FORK
+			: XFS_MAX_EXTCNT_DATA_FORK_OLD;
 
-	return MAXAEXTNUM;
+	case XFS_ATTR_FORK:
+		return has_big_extcnt ? XFS_MAX_EXTCNT_ATTR_FORK
+			: XFS_MAX_EXTCNT_ATTR_FORK_OLD;
+
+			default:
+		ASSERT(0);
+		return 0;
+	}
 }
 
 static inline xfs_extnum_t
 xfs_dfork_data_extents(
 	struct xfs_dinode	*dip)
 {
-	return be32_to_cpu(dip->di_nextents);
+	if (xfs_dinode_has_nrext64(dip))
+		return be64_to_cpu(dip->di_big_dextcnt);
+	else
+		return be32_to_cpu(dip->di_nextents);
 }
 
 static inline xfs_extnum_t
 xfs_dfork_attr_extents(
 	struct xfs_dinode	*dip)
 {
-	return be16_to_cpu(dip->di_anextents);
+	if (xfs_dinode_has_nrext64(dip))
+		return be32_to_cpu(dip->di_big_aextcnt);
+	else
+		return be16_to_cpu(dip->di_anextents);
 }
 
 static inline xfs_extnum_t
