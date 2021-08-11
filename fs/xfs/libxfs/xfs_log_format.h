@@ -420,7 +420,8 @@ struct xfs_log_dinode {
 	xfs_lsn_t	di_lsn;		/* flush sequence */
 	uint64_t	di_flags2;	/* more random flags */
 	uint32_t	di_cowextsize;	/* basic cow extent size for file */
-	uint8_t		di_pad2[12];	/* more padding for future expansion */
+	uint8_t		di_pad2[4];	/* more padding for future expansion */
+	uint64_t	di_nextents64; /* higher part of data fork extent count */
 
 	/* fields only written to during inode creation */
 	xfs_log_timestamp_t di_crtime;	/* time created */

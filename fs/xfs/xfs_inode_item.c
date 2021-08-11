@@ -358,6 +358,23 @@ xfs_copy_dm_fields_to_log_dinode(
 	}
 }
 
+static inline void
+xfs_inode_to_log_dinode_iext_counters(
+	struct xfs_inode	*ip,
+	struct xfs_log_dinode	*to)
+{
+	if (xfs_inode_has_nrext64(ip)) {
+		to->di_nextents64 = xfs_ifork_nextents(&ip->i_df);
+		to->di_nextents32 = xfs_ifork_nextents(ip->i_afp);
+		to->di_nextents16 = 0;
+	} else {
+		if (xfs_sb_version_has_v3inode(&ip->i_mount->m_sb))
+			to->di_nextents64 = 0;
+		to->di_nextents32 = xfs_ifork_nextents(&ip->i_df);
+		to->di_nextents16 = xfs_ifork_nextents(ip->i_afp);
+	}
+}
+
 static void
 xfs_inode_to_log_dinode(
 	struct xfs_inode	*ip,
@@ -385,8 +402,6 @@ xfs_inode_to_log_dinode(
 	to->di_size = ip->i_disk_size;
 	to->di_nblocks = ip->i_nblocks;
 	to->di_extsize = ip->i_extsize;
-	to->di_nextents32 = xfs_ifork_nextents(&ip->i_df);
-	to->di_nextents16 = xfs_ifork_nextents(ip->i_afp);
 	to->di_forkoff = ip->i_forkoff;
 	to->di_aformat = xfs_ifork_format(ip->i_afp);
 	to->di_flags = ip->i_diflags;
@@ -411,6 +426,8 @@ xfs_inode_to_log_dinode(
 		to->di_version = 2;
 		to->di_flushiter = ip->i_flushiter;
 	}
+
+	xfs_inode_to_log_dinode_iext_counters(ip, to);
 }
 
 /*
