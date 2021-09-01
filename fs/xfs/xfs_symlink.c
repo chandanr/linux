@@ -297,7 +297,7 @@ xfs_symlink(
 	/*
 	 * Allocate an inode for the symlink.
 	 */
-	error = xfs_dialloc(&tp, dp->i_ino, S_IFLNK, &ino);
+	error = xfs_dialloc(&tp, dp, S_IFLNK, &ino);
 	if (!error)
 		error = xfs_icreate(tp, ino, &args, &ip);
 	if (error)

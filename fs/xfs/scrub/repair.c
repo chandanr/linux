@@ -1802,7 +1802,7 @@ xrep_setup_tempfile(
 		goto out_release_dquots;
 
 	/* Allocate inode, set up directory. */
-	error = xfs_dialloc(&tp, dp->i_ino, mode, &ino);
+	error = xfs_dialloc(&tp, dp, mode, &ino);
 	if (error)
 		goto out_trans_cancel;
 	error = xfs_icreate(tp, ino, &args, &sc->tempip);

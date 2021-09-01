@@ -1765,26 +1765,28 @@ out_release:
 int
 xfs_dialloc(
 	struct xfs_trans	**tpp,
-	xfs_ino_t		parent,
+	struct xfs_inode	*pip,
 	umode_t			mode,
 	xfs_ino_t		*new_ino)
 {
 	struct xfs_mount	*mp = (*tpp)->t_mountp;
-	xfs_agnumber_t		agno;
-	int			error = 0;
-	xfs_agnumber_t		start_agno;
 	struct xfs_perag	*pag;
 	struct xfs_ino_geometry	*igeo = M_IGEO(mp);
+	xfs_ino_t		ino;
+	xfs_ino_t		parent = pip ? pip->i_ino : 0;
+	xfs_agnumber_t		agno;
+	xfs_agnumber_t		start_agno;
 	bool			ok_alloc = true;
 	int			flags;
-	xfs_ino_t		ino;
+	int			error = 0;
 
 	/*
 	 * Directories, symlinks, and regular files frequently allocate at least
 	 * one block, so factor that potential expansion when we examine whether
-	 * an AG has enough space for file creation.
+	 * an AG has enough space for file creation.  Try to keep metadata
+	 * files all in the same AG.
 	 */
-	if (S_ISDIR(mode))
+	if (S_ISDIR(mode) && (!pip || !xfs_is_metadata_inode(pip)))
 		start_agno = xfs_ialloc_next_ag(mp);
 	else {
 		start_agno = XFS_INO_TO_AGNO(mp, parent);

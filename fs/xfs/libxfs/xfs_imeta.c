@@ -211,7 +211,7 @@ xfs_imeta_sb_create(
 		return -EEXIST;
 
 	/* Create a new inode and set the sb pointer. */
-	error = xfs_dialloc(tpp, 0, mode, &ino);
+	error = xfs_dialloc(tpp, NULL, mode, &ino);
 	if (error)
 		return error;
 	error = xfs_icreate(*tpp, ino, &args, ipp);
@@ -571,7 +571,7 @@ xfs_imeta_dir_create(
 	 * entry pointing to them, but a directory also the "." entry
 	 * pointing to itself.
 	 */
-	error = xfs_dialloc(tpp, dp->i_ino, mode, &ino);
+	error = xfs_dialloc(tpp, dp, mode, &ino);
 	if (error)
 		goto out_ilock;
 	error = xfs_icreate(*tpp, ino, &args, ipp);
