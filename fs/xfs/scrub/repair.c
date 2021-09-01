@@ -515,15 +515,21 @@ xrep_reap_invalidate_block(
 	xfs_trans_binval(sc->tp, bp);
 }
 
+struct xrep_reap_state {
+	struct xfs_scrub		*sc;
+	const struct xfs_owner_info	*oinfo;
+	enum xfs_ag_resv_type		resv;
+	unsigned int			deferred;
+};
+
 /* Dispose of a single block. */
 STATIC int
 xrep_reap_block(
-	struct xfs_scrub		*sc,
-	xfs_fsblock_t			fsbno,
-	const struct xfs_owner_info	*oinfo,
-	enum xfs_ag_resv_type		resv,
-	unsigned int			*deferred)
+	uint64_t			fsbno,
+	void				*priv)
 {
+	struct xrep_reap_state		*rs = priv;
+	struct xfs_scrub		*sc = rs->sc;
 	struct xfs_btree_cur		*cur;
 	xfs_agnumber_t			agno;
 	xfs_agblock_t			agbno;
@@ -543,7 +549,8 @@ xrep_reap_block(
 	cur = xfs_rmapbt_init_cursor(sc->mp, sc->tp, sc->sa.agf_bp, sc->sa.pag);
 
 	/* Can we find any other rmappings? */
-	error = xfs_rmap_has_other_keys(cur, agbno, 1, oinfo, &has_other_rmap);
+	error = xfs_rmap_has_other_keys(cur, agbno, 1, rs->oinfo,
+			&has_other_rmap);
 	xfs_btree_del_cursor(cur, error);
 	if (error)
 		return error;
@@ -563,8 +570,8 @@ xrep_reap_block(
 	 */
 	if (has_other_rmap) {
 		error = xfs_rmap_free(sc->tp, sc->sa.agf_bp, sc->sa.pag, agbno,
-				1, oinfo);
-	} else if (resv == XFS_AG_RESV_AGFL) {
+				1, rs->oinfo);
+	} else if (rs->resv == XFS_AG_RESV_AGFL) {
 		xrep_reap_invalidate_block(sc, fsbno);
 		error = xrep_put_freelist(sc, agbno);
 	} else {
@@ -576,14 +583,14 @@ xrep_reap_block(
 		 * reservation.
 		 */
 		xrep_reap_invalidate_block(sc, fsbno);
-		__xfs_bmap_add_free(sc->tp, fsbno, 1, oinfo, false);
-		(*deferred)++;
-		need_roll = *deferred > 100;
+		__xfs_bmap_add_free(sc->tp, fsbno, 1, rs->oinfo, false);
+		rs->deferred++;
+		need_roll = rs->deferred > 100;
 	}
 	if (error || !need_roll)
 		return error;
 
-	*deferred = 0;
+	rs->deferred = 0;
 	return xrep_roll_ag_trans(sc);
 }
 
@@ -595,26 +602,17 @@ xrep_reap_extents(
 	const struct xfs_owner_info	*oinfo,
 	enum xfs_ag_resv_type		type)
 {
-	struct xbitmap_range		*bmr;
-	struct xbitmap_range		*n;
-	xfs_fsblock_t			fsbno;
-	unsigned int			deferred = 0;
-	int				error = 0;
+	struct xrep_reap_state		rs = {
+		.sc			= sc,
+		.oinfo			= oinfo,
+		.resv			= type,
+	};
+	int				error;
 
 	ASSERT(xfs_has_rmapbt(sc->mp));
 
-	for_each_xbitmap_block(fsbno, bmr, n, bitmap) {
-		ASSERT(sc->ip != NULL ||
-		       XFS_FSB_TO_AGNO(sc->mp, fsbno) == sc->sa.pag->pag_agno);
-		trace_xrep_dispose_btree_extent(sc->mp,
-				XFS_FSB_TO_AGNO(sc->mp, fsbno),
-				XFS_FSB_TO_AGBNO(sc->mp, fsbno), 1);
-
-		error = xrep_reap_block(sc, fsbno, oinfo, type, &deferred);
-		if (error)
-			break;
-	}
-	if (error || deferred == 0)
+	error = xbitmap_walk_bits(bitmap, xrep_reap_block, &rs);
+	if (error || rs.deferred == 0)
 		return error;
 
 	return xrep_roll_ag_trans(sc);
