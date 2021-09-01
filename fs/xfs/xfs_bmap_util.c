@@ -1252,7 +1252,7 @@ out_trans_cancel:
  * reject and log the attempt. basically we are putting the responsibility on
  * userspace to get this right.
  */
-static int
+int
 xfs_swap_extents_check_format(
 	struct xfs_inode	*ip,	/* target inode */
 	struct xfs_inode	*tip)	/* tmp inode */
@@ -1394,7 +1394,7 @@ xfs_swap_change_owner(
 }
 
 /* Swap the extents of two files by swapping data forks. */
-STATIC int
+int
 xfs_swap_extent_forks(
 	struct xfs_trans	**tpp,
 	struct xfs_swapext_req	*req)

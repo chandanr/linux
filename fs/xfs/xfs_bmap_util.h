@@ -69,6 +69,10 @@ int	xfs_free_eofblocks(struct xfs_inode *ip);
 int	xfs_swap_extents(struct xfs_inode *ip, struct xfs_inode *tip,
 			 struct xfs_swapext *sx);
 
+struct xfs_swapext_req;
+int xfs_swap_extent_forks(struct xfs_trans **tpp, struct xfs_swapext_req *req);
+int xfs_swap_extents_check_format(struct xfs_inode *ip, struct xfs_inode *tip);
+
 xfs_daddr_t xfs_fsb_to_db(struct xfs_inode *ip, xfs_fsblock_t fsb);
 
 xfs_extnum_t xfs_bmap_count_leaves(struct xfs_ifork *ifp, xfs_filblks_t *count);
