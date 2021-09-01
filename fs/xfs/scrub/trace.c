@@ -12,8 +12,9 @@
 #include "xfs_mount.h"
 #include "xfs_inode.h"
 #include "xfs_btree.h"
-#include "scrub/scrub.h"
 #include "xfs_ag.h"
+#include "scrub/scrub.h"
+#include "scrub/xfile.h"
 
 /* Figure out which block the btree cursor was pointing to. */
 static inline xfs_fsblock_t
