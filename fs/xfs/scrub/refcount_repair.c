@@ -23,6 +23,7 @@
 #include "xfs_refcount_btree.h"
 #include "xfs_error.h"
 #include "xfs_ag.h"
+#include "xfs_health.h"
 #include "scrub/xfs_scrub.h"
 #include "scrub/scrub.h"
 #include "scrub/common.h"
@@ -223,6 +224,7 @@ xrep_refc_next_rrm(
 		if (error)
 			goto out_error;
 		if (XFS_IS_CORRUPT(mp, !have_gt)) {
+			xfs_btree_mark_sick(cur);
 			error = -EFSCORRUPTED;
 			goto out_error;
 		}
@@ -349,6 +351,7 @@ xrep_refc_find_refcounts(
 		if (error)
 			goto out_bag;
 		if (XFS_IS_CORRUPT(sc->mp, !have_gt)) {
+			xfs_btree_mark_sick(sc->sa.rmap_cur);
 			error = -EFSCORRUPTED;
 			goto out_bag;
 		}
@@ -398,6 +401,7 @@ xrep_refc_find_refcounts(
 			if (error)
 				goto out_bag;
 			if (XFS_IS_CORRUPT(sc->mp, !have_gt)) {
+				xfs_btree_mark_sick(sc->sa.rmap_cur);
 				error = -EFSCORRUPTED;
 				goto out_bag;
 			}
