@@ -273,7 +273,7 @@ STATIC void
 xfs_bmap_update_log_item(
 	struct xfs_trans		*tp,
 	struct xfs_bui_log_item		*buip,
-	struct xfs_bmap_intent		*bmap)
+	struct xfs_bmap_intent		*bi)
 {
 	uint				next_extent;
 	struct xfs_map_extent		*map;
@@ -289,25 +289,25 @@ xfs_bmap_update_log_item(
 	next_extent = atomic_inc_return(&buip->bui_next_extent) - 1;
 	ASSERT(next_extent < buip->bui_format.bui_nextents);
 	map = &buip->bui_format.bui_extents[next_extent];
-	map->me_owner = bmap->bi_owner->i_ino;
-	map->me_startblock = bmap->bi_bmap.br_startblock;
-	map->me_startoff = bmap->bi_bmap.br_startoff;
-	map->me_len = bmap->bi_bmap.br_blockcount;
-	switch (bmap->bi_type) {
+	map->me_owner = bi->bi_owner->i_ino;
+	map->me_startblock = bi->bi_bmap.br_startblock;
+	map->me_startoff = bi->bi_bmap.br_startoff;
+	map->me_len = bi->bi_bmap.br_blockcount;
+	switch (bi->bi_type) {
 	case XFS_BMAP_MAP:
 	case XFS_BMAP_UNMAP:
-		map->me_flags = bmap->bi_type;
+		map->me_flags = bi->bi_type;
 		break;
 	default:
 		ASSERT(0);
 		map->me_flags = 0;
 		break;
 	}
-	if (bmap->bi_bmap.br_state == XFS_EXT_UNWRITTEN)
+	if (bi->bi_bmap.br_state == XFS_EXT_UNWRITTEN)
 		map->me_flags |= XFS_BMAP_EXTENT_UNWRITTEN;
-	if (bmap->bi_whichfork == XFS_ATTR_FORK)
+	if (bi->bi_whichfork == XFS_ATTR_FORK)
 		map->me_flags |= XFS_BMAP_EXTENT_ATTR_FORK;
-	if (xfs_ifork_is_realtime(bmap->bi_owner, bmap->bi_whichfork))
+	if (xfs_ifork_is_realtime(bi->bi_owner, bi->bi_whichfork))
 		map->me_flags |= XFS_BMAP_EXTENT_REALTIME;
 }
 
@@ -320,15 +320,15 @@ xfs_bmap_update_create_intent(
 {
 	struct xfs_mount		*mp = tp->t_mountp;
 	struct xfs_bui_log_item		*buip = xfs_bui_init(mp);
-	struct xfs_bmap_intent		*bmap;
+	struct xfs_bmap_intent		*bi;
 
 	ASSERT(count == XFS_BUI_MAX_FAST_EXTENTS);
 
 	xfs_trans_add_item(tp, &buip->bui_item);
 	if (sort)
 		list_sort(mp, items, xfs_bmap_update_diff_items);
-	list_for_each_entry(bmap, items, bi_list)
-		xfs_bmap_update_log_item(tp, buip, bmap);
+	list_for_each_entry(bi, items, bi_list)
+		xfs_bmap_update_log_item(tp, buip, bi);
 	return &buip->bui_item;
 }
 
@@ -376,10 +376,10 @@ STATIC void
 xfs_bmap_update_cancel_item(
 	struct list_head		*item)
 {
-	struct xfs_bmap_intent		*bmap;
+	struct xfs_bmap_intent		*bi;
 
-	bmap = container_of(item, struct xfs_bmap_intent, bi_list);
-	kmem_free(bmap);
+	bi = container_of(item, struct xfs_bmap_intent, bi_list);
+	kmem_free(bi);
 }
 
 const struct xfs_defer_op_type xfs_bmap_update_defer_type = {
@@ -397,18 +397,18 @@ xfs_bui_validate(
 	struct xfs_mount		*mp,
 	struct xfs_bui_log_item		*buip)
 {
-	struct xfs_map_extent		*bmap;
+	struct xfs_map_extent		*map;
 
 	/* Only one mapping operation per BUI... */
 	if (buip->bui_format.bui_nextents != XFS_BUI_MAX_FAST_EXTENTS)
 		return false;
 
-	bmap = &buip->bui_format.bui_extents[0];
+	map = &buip->bui_format.bui_extents[0];
 
-	if (bmap->me_flags & ~XFS_BMAP_EXTENT_FLAGS)
+	if (map->me_flags & ~XFS_BMAP_EXTENT_FLAGS)
 		return false;
 
-	switch (bmap->me_flags & XFS_BMAP_EXTENT_TYPE_MASK) {
+	switch (map->me_flags & XFS_BMAP_EXTENT_TYPE_MASK) {
 	case XFS_BMAP_MAP:
 	case XFS_BMAP_UNMAP:
 		break;
@@ -416,16 +416,16 @@ xfs_bui_validate(
 		return false;
 	}
 
-	if (!xfs_verify_ino(mp, bmap->me_owner))
+	if (!xfs_verify_ino(mp, map->me_owner))
 		return false;
 
-	if (!xfs_verify_fileext(mp, bmap->me_startoff, bmap->me_len))
+	if (!xfs_verify_fileext(mp, map->me_startoff, map->me_len))
 		return false;
 
-	if (bmap->me_flags & XFS_BMAP_EXTENT_REALTIME)
-		return xfs_verify_rtext(mp, bmap->me_startblock, bmap->me_len);
+	if (map->me_flags & XFS_BMAP_EXTENT_REALTIME)
+		return xfs_verify_rtext(mp, map->me_startblock, map->me_len);
 
-	return xfs_verify_fsbext(mp, bmap->me_startblock, bmap->me_len);
+	return xfs_verify_fsbext(mp, map->me_startblock, map->me_len);
 }
 
 /*
