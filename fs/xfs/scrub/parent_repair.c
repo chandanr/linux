@@ -198,10 +198,14 @@ findparent_walk_inodes(
 	xfs_ino_t		*found_parent)
 {
 	struct findparent_info	fpi = FINDPARENT_INIT;
+	unsigned int		flags = 0;
 	int			error;
 
-	error = xfs_iwalk(sc->mp, sc->tp, 0, 0, findparent_walk_directory, 0,
-			&fpi);
+	if (xfs_is_metadata_inode(sc->ip))
+		flags |= XFS_IWALK_METADIR;
+
+	error = xfs_iwalk(sc->mp, sc->tp, 0, flags, findparent_walk_directory,
+			0, &fpi);
 	if (error == -ECANCELED) {
 		/* Found multiple candidate parent for a dir. */
 		*found_parent = NULLFSINO;
