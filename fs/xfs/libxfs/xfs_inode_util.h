@@ -55,9 +55,23 @@ void xfs_trans_ichgtime(struct xfs_trans *tp, struct xfs_inode *ip, int flags);
 void xfs_inode_init(struct xfs_trans *tp, const struct xfs_icreate_args *args,
 		struct xfs_inode *ip);
 
+int xfs_iunlink(struct xfs_trans *tp, struct xfs_inode *ip);
+int xfs_iunlink_remove(struct xfs_trans *tp, struct xfs_perag *pag,
+		struct xfs_inode *ip);
+
 /* The libxfs client must provide this group of helper functions. */
 
 /* Initialize the incore inode. */
 void xfs_setup_inode(struct xfs_inode *ip);
+
+/* Unlinked inode backref cache functions.  Optional. */
+int xfs_iunlink_init(struct xfs_perag *pag);
+void xfs_iunlink_destroy(struct xfs_perag *pag);
+xfs_agino_t xfs_iunlink_lookup_backref(struct xfs_perag *pag,
+		xfs_agino_t agino);
+int xfs_iunlink_add_backref(struct xfs_perag *pag, xfs_agino_t prev_agino,
+		xfs_agino_t this_agino);
+int xfs_iunlink_change_backref(struct xfs_perag *pag, xfs_agino_t prev_agino,
+		xfs_agino_t this_agino);
 
 #endif /* __XFS_INODE_UTIL_H__ */
