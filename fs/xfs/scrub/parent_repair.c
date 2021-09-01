@@ -237,6 +237,44 @@ findparent_check_dir(
 	return fpi.found_parent == parent_ino;
 }
 
+/* Check the dentry cache to see if knows of a parent for the scrub target. */
+STATIC xfs_ino_t
+findparent_from_dcache(
+	struct xfs_scrub	*sc)
+{
+	struct inode		*pip = NULL;
+	struct dentry		*dentry, *parent;
+	xfs_ino_t		ret = NULLFSINO;
+
+	dentry = d_find_alias(VFS_I(sc->ip));
+	if (!dentry)
+		goto out;
+
+	parent = dget_parent(dentry);
+	if (!parent)
+		goto out_dput;
+
+	if (parent->d_sb != sc->ip->i_mount->m_super) {
+		dput(parent);
+		goto out_dput;
+	}
+
+	pip = igrab(d_inode(parent));
+	dput(parent);
+
+	if (S_ISDIR(pip->i_mode)) {
+		trace_xrep_findparent_dcache(sc->ip, XFS_I(pip)->i_ino);
+		ret = XFS_I(pip)->i_ino;
+	}
+
+	xfs_irele(XFS_I(pip));
+
+out_dput:
+	dput(dentry);
+out:
+	return ret;
+}
+
 /*
  * Find the parent of the scrub target directory.  Callers can pass in a
  * suggested parent as the initial value of @parent_ino, or NULLFSINO if they
@@ -248,6 +286,8 @@ xrep_findparent(
 	struct xfs_scrub	*sc,
 	xfs_ino_t		*parent_ino)
 {
+	xfs_ino_t		ino;
+
 	ASSERT(S_ISDIR(VFS_I(sc->ip)->i_mode));
 
 	/*
@@ -277,6 +317,13 @@ xrep_findparent(
 	 */
 	if (findparent_check_dir(sc, *parent_ino))
 		return 0;
+
+	/* Maybe the vfs dentry cache will supply us with a parent? */
+	ino = findparent_from_dcache(sc);
+	if (findparent_check_dir(sc, ino)) {
+		*parent_ino = ino;
+		return 0;
+	}
 
 	/* Otherwise, scan the entire filesystem to find a parent. */
 	return findparent_walk_inodes(sc, parent_ino);
