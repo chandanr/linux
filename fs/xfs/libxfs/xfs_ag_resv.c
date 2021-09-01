@@ -72,6 +72,7 @@ xfs_ag_resv_critical(
 {
 	xfs_extlen_t			avail;
 	xfs_extlen_t			orig;
+	xfs_extlen_t			btree_maxlevels;
 
 	switch (type) {
 	case XFS_AG_RESV_METADATA:
@@ -91,7 +92,8 @@ xfs_ag_resv_critical(
 	trace_xfs_ag_resv_critical(pag, type, avail);
 
 	/* Critically low if less than 10% or max btree height remains. */
-	return XFS_TEST_ERROR(avail < orig / 10 || avail < XFS_BTREE_MAXLEVELS,
+	btree_maxlevels = xfs_btree_maxlevels(pag->pag_mount, XFS_BTNUM_MAX);
+	return XFS_TEST_ERROR(avail < orig / 10 || avail < btree_maxlevels,
 			pag->pag_mount, XFS_ERRTAG_AG_RESV_CRITICAL);
 }
 

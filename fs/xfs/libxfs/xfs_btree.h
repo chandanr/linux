@@ -582,5 +582,6 @@ void xfs_btree_copy_keys(struct xfs_btree_cur *cur,
 		const union xfs_btree_key *src_key, int numkeys);
 struct xfs_btree_cur *xfs_btree_alloc_cursor(struct xfs_mount *mp,
 		struct xfs_trans *tp, xfs_btnum_t btnum);
+unsigned int xfs_btree_maxlevels(struct xfs_mount *mp, xfs_btnum_t btnum);
 
 #endif	/* __XFS_BTREE_H__ */
