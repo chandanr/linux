@@ -503,7 +503,8 @@ xfs_bui_item_recover(
 
 	if (fake.bi_bmap.br_blockcount > 0) {
 		ASSERT(fake.bi_type == XFS_BMAP_UNMAP);
-		xfs_bmap_unmap_extent(tp, fake.bi_owner, &fake.bi_bmap);
+		xfs_bmap_unmap_extent(tp, fake.bi_owner, fake.bi_whichfork,
+				&fake.bi_bmap);
 	}
 
 	/*
