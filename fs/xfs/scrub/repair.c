@@ -1015,6 +1015,20 @@ xrep_reap_ag_extent(
 		return error;
 
 	rs->deferred = 0;
+	if (sc->ip) {
+		/*
+		 * If we're reaping file data, hold the AGF buffer across the
+		 * transaction roll so that we don't have to reattach it to the
+		 * xchk_ag structure.
+		 */
+		xfs_trans_bhold(sc->tp, sc->sa.agf_bp);
+		error = xfs_trans_roll_inode(&sc->tp, sc->ip);
+		if (error)
+			return error;
+		xfs_trans_bjoin(sc->tp, sc->sa.agf_bp);
+		return 0;
+	}
+
 	return xrep_roll_ag_trans(sc);
 }
 
@@ -1074,8 +1088,24 @@ xrep_reap_extent(
 
 	ASSERT(len <= MAXEXTLEN);
 
-	/* We don't support reaping file extents yet. */
-	if (sc->ip != NULL || sc->sa.pag->pag_agno != agno) {
+	if (sc->ip != NULL) {
+		/*
+		 * We're reaping blocks after repairing file metadata, which
+		 * means that the blocks can be in any AG, so we have to init
+		 * the xchk_ag structure before we can reap each extent and
+		 * release it afterwards.
+		 */
+		ASSERT(!sc->sa.pag);
+
+		sc->sa.pag = xfs_perag_get(sc->mp, agno);
+		if (!sc->sa.pag)
+			return -EFSCORRUPTED;
+
+		error = xfs_alloc_read_agf(sc->mp, sc->tp, agno, 0,
+				&sc->sa.agf_bp);
+		if (error)
+			goto out_pag;
+	} else if (sc->sa.pag == NULL || sc->sa.pag->pag_agno != agno) {
 		ASSERT(0);
 		return -EFSCORRUPTED;
 	}
@@ -1112,6 +1142,15 @@ xrep_reap_extent(
 out_cur:
 	if (cur)
 		xfs_btree_del_cursor(cur, error);
+	if (sc->ip != NULL) {
+		xfs_trans_brelse(sc->tp, sc->sa.agf_bp);
+		sc->sa.agf_bp = NULL;
+	}
+out_pag:
+	if (sc->ip != NULL) {
+		xfs_perag_put(sc->sa.pag);
+		sc->sa.pag = NULL;
+	}
 	return error;
 }
 
