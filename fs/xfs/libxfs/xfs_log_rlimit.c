@@ -14,6 +14,7 @@
 #include "xfs_trans_space.h"
 #include "xfs_da_btree.h"
 #include "xfs_bmap_btree.h"
+#include "xfs_trace.h"
 
 /*
  * Calculate the maximum length in bytes that would be required for a local
@@ -47,18 +48,25 @@ xfs_log_get_max_trans_res(
 	struct xfs_trans_res	*max_resp)
 {
 	struct xfs_trans_res	*resp;
+	struct xfs_trans_res	*start_resp;
 	struct xfs_trans_res	*end_resp;
+	struct xfs_trans_resv	*resv;
 	int			log_space = 0;
 	int			attr_space;
 
 	attr_space = xfs_log_calc_max_attrsetm_res(mp);
 
-	resp = (struct xfs_trans_res *)M_RES(mp);
-	end_resp = (struct xfs_trans_res *)(M_RES(mp) + 1);
-	for (; resp < end_resp; resp++) {
+	resv = kmem_zalloc(sizeof(struct xfs_trans_resv), 0);
+	xfs_trans_resv_calc_logsize(mp, resv);
+
+	start_resp = (struct xfs_trans_res *)resv;
+	end_resp = (struct xfs_trans_res *)(resv + 1);
+	for (resp = start_resp; resp < end_resp; resp++) {
 		int		tmp = resp->tr_logcount > 1 ?
 				      resp->tr_logres * resp->tr_logcount :
 				      resp->tr_logres;
+
+		trace_xfs_trans_resv_calc_logsize(mp, resp - start_resp, resp);
 		if (log_space < tmp) {
 			log_space = tmp;
 			*max_resp = *resp;		/* struct copy */
@@ -66,9 +74,10 @@ xfs_log_get_max_trans_res(
 	}
 
 	if (attr_space > log_space) {
-		*max_resp = M_RES(mp)->tr_attrsetm;	/* struct copy */
+		*max_resp = resv->tr_attrsetm;	/* struct copy */
 		max_resp->tr_logres = attr_space;
 	}
+	kmem_free(resv);
 }
 
 /*
