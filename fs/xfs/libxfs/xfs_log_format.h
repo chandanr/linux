@@ -820,14 +820,19 @@ struct xfs_swap_extent {
 /* Do not swap any part of the range where file1's mapping is a hole. */
 #define XFS_SWAP_EXT_SKIP_FILE1_HOLES	(1ULL << 2)
 
+/* Try to convert inode2 from block to short format at the end, if possible. */
+#define XFS_SWAP_EXT_FILE2_CVT_SF	(1ULL << 3)
+
 #define XFS_SWAP_EXT_FLAGS		(XFS_SWAP_EXT_ATTR_FORK | \
 					 XFS_SWAP_EXT_SET_SIZES | \
-					 XFS_SWAP_EXT_SKIP_FILE1_HOLES)
+					 XFS_SWAP_EXT_SKIP_FILE1_HOLES | \
+					 XFS_SWAP_EXT_FILE2_CVT_SF)
 
 #define XFS_SWAP_EXT_STRINGS \
 	{ XFS_SWAP_EXT_ATTR_FORK,		"ATTRFORK" }, \
 	{ XFS_SWAP_EXT_SET_SIZES,		"SETSIZES" }, \
-	{ XFS_SWAP_EXT_SKIP_FILE1_HOLES,	"SKIP_FILE1_HOLES" }
+	{ XFS_SWAP_EXT_SKIP_FILE1_HOLES,	"SKIP_FILE1_HOLES" }, \
+	{ XFS_SWAP_EXT_FILE2_CVT_SF,		"INO2_SHORTFORM" }
 
 /* This is the structure used to lay out an sxi log item in the log. */
 struct xfs_sxi_log_format {

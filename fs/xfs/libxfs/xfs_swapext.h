@@ -63,12 +63,17 @@ struct xfs_swapext_req {
 /* Do not swap any part of the range where file1's mapping is a hole. */
 #define XFS_SWAP_REQ_SKIP_FILE1_HOLES	(1U << 2)
 
+/* Try to convert inode2's fork to local format, if possible. */
+#define XFS_SWAP_REQ_FILE2_CVT_SF	(1U << 3)
+
 #define XFS_SWAP_REQ_FLAGS		(XFS_SWAP_REQ_SET_SIZES | \
-					 XFS_SWAP_REQ_SKIP_FILE1_HOLES)
+					 XFS_SWAP_REQ_SKIP_FILE1_HOLES | \
+					 XFS_SWAP_REQ_FILE2_CVT_SF)
 
 #define XFS_SWAP_REQ_STRINGS \
 	{ XFS_SWAP_REQ_SET_SIZES,		"SETSIZES" }, \
-	{ XFS_SWAP_REQ_SKIP_FILE1_HOLES,	"SKIP_FILE1_HOLES" }
+	{ XFS_SWAP_REQ_SKIP_FILE1_HOLES,	"SKIP_FILE1_HOLES" }, \
+	{ XFS_SWAP_REQ_FILE2_CVT_SF,		"INO2_SHORTFORM" }
 
 /* Estimated resource requirements for a swapext operation. */
 struct xfs_swapext_res {
@@ -84,6 +89,8 @@ unsigned int xfs_swapext_reflink_prep(const struct xfs_swapext_req *req);
 void xfs_swapext_reflink_finish(struct xfs_trans *tp,
 		const struct xfs_swapext_req *req, unsigned int reflink_state);
 
+int xfs_swapext_estimate_overhead(const struct xfs_swapext_req *req,
+		struct xfs_swapext_res *res);
 int xfs_swapext_estimate(const struct xfs_swapext_req *req,
 		struct xfs_swapext_res *res);
 
