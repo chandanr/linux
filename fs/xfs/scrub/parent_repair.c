@@ -394,13 +394,13 @@ xrep_parent(
 
 	/*
 	 * Try to find the parent of this directory.  If we can't find it,
-	 * we'll just bail out for now.
+	 * we'll move the directory to the orphanage.
 	 */
 	error = xrep_findparent(sc, &parent_ino);
 	if (error)
 		return error;
 	if (parent_ino == NULLFSINO)
-		return -EFSCORRUPTED;
+		return xrep_move_to_orphanage(sc);
 
 	error = xrep_ino_dqattach(sc);
 	if (error)

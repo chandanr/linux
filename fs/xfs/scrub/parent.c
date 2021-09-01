@@ -17,27 +17,49 @@
 #include "scrub/scrub.h"
 #include "scrub/common.h"
 #include "scrub/parent.h"
+#include "scrub/repair.h"
 
 /* Set us up to scrub parents. */
 int
 xchk_setup_parent(
 	struct xfs_scrub	*sc)
 {
-	int			error;
+#if IS_ENABLED(CONFIG_XFS_ONLINE_REPAIR)
+	if (sc->sm->sm_flags & XFS_SCRUB_IFLAG_REPAIR) {
+		int		error;
 
-	/*
-	 * If we're attempting a repair having failed a previous repair due to
-	 * being unable to lock an inode (TRY_HARDER), we need to freeze the
-	 * filesystem to make the repair happen.  Note that we don't bother
-	 * with the fs freeze when TRY_HARDER is set but IFLAG_REPAIR isn't,
-	 * because a plain scrub is allowed to return with INCOMPLETE set.
-	 */
-	if ((sc->sm->sm_flags & XFS_SCRUB_IFLAG_REPAIR) &&
-	    (sc->flags & XCHK_TRY_HARDER)) {
-		error = xchk_fs_freeze(sc);
-		if (error)
+		error = xrep_setup_orphanage(sc);
+		switch (error) {
+		case 0:
+		case -ENOENT:
+		case -ENOTDIR:
+		case -ENOSPC:
+			/*
+			 * If the orphanage can't be found or isn't a
+			 * directory, we'll keep going, but we won't be able to
+			 * attach the file to the orphanage if we can't find
+			 * any parents.
+			 */
+			break;
+		default:
 			return error;
+		}
+
+		/*
+		 * If we're attempting a repair having failed a previous repair
+		 * due to being unable to lock an inode (TRY_HARDER), we need
+		 * to freeze the filesystem to make the repair happen.  Note
+		 * that we don't bother with the fs freeze when TRY_HARDER is
+		 * set but IFLAG_REPAIR isn't, because a plain scrub is allowed
+		 * to return with INCOMPLETE set.
+		 */
+		if (sc->flags & XCHK_TRY_HARDER) {
+			error = xchk_fs_freeze(sc);
+			if (error)
+				return error;
+		}
 	}
+#endif
 
 	return xchk_setup_inode_contents(sc, 0);
 }

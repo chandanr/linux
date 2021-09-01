@@ -28,6 +28,27 @@ xchk_setup_directory(
 	unsigned int		sz;
 	int			error;
 
+#if IS_ENABLED(CONFIG_XFS_ONLINE_REPAIR)
+	if (sc->sm->sm_flags & XFS_SCRUB_IFLAG_REPAIR) {
+		error = xrep_setup_orphanage(sc);
+		switch (error) {
+		case 0:
+		case -ENOENT:
+		case -ENOTDIR:
+		case -ENOSPC:
+			/*
+			 * If the orphanage can't be found or isn't a
+			 * directory, we'll keep going, but we won't be able to
+			 * attach the file to the orphanage if we can't find
+			 * the parent.
+			 */
+			break;
+		default:
+			return error;
+		}
+	}
+#endif
+
 	error = xrep_setup_tempfile(sc, S_IFDIR);
 	if (error)
 		return error;
