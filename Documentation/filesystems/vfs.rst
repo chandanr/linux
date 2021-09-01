@@ -1021,6 +1021,8 @@ This describes how the VFS can manipulate an open file.  As of kernel
 		loff_t (*remap_file_range)(struct file *file_in, loff_t pos_in,
 					   struct file *file_out, loff_t pos_out,
 					   loff_t len, unsigned int remap_flags);
+                int (*xchg_file_range)(struct file *file1, struct file *file2,
+                                       struct file_xchg_range *fxr);
 		int (*fadvise)(struct file *, loff_t, loff_t, int);
 	};
 
@@ -1138,6 +1140,20 @@ otherwise noted.
 	identical contents.  If REMAP_FILE_CAN_SHORTEN is set, the caller is
 	ok with the implementation shortening the request length to
 	satisfy alignment or EOF requirements (or any other reason).
+
+``xchg_file_range``
+	called by the ioctl(2) system call for FIEXCHANGE_RANGE to exchange the
+	contents of two file ranges.  An implementation should exchange
+	fxr.length bytes starting at fxr.file1_offset in file1 with the same
+	number of bytes starting at fxr.file2_offset in file2.  Refer to
+	fiexchange.h file for more information.  Implementations must call
+	generic_xchg_file_range_prep to prepare the two files prior to taking
+	locks; they must call generic_xchg_file_range_check_fresh once the
+	inode is locked to abort the call if file2 has changed; and they must
+	update the inode change and mod times of both files as part of the
+	metadata update.  The timestamp updates must be done atomically as part
+	of the data exchange operation to ensure correctness of the freshness
+	check.
 
 ``fadvise``
 	possibly called by the fadvise64() system call.
