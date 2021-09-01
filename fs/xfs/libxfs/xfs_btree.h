@@ -215,6 +215,19 @@ struct xfs_btree_cur_ino {
 #define	XFS_BTCUR_BMBT_INVALID_OWNER	(1 << 1)
 };
 
+struct xfs_btree_level {
+	/* buffer pointer */
+	struct xfs_buf	*bp;
+
+	/* key/record number */
+	unsigned int	ptr;
+
+	/* readahead info */
+#define	XFS_BTCUR_LEFTRA	1	/* left sibling has been read-ahead */
+#define	XFS_BTCUR_RIGHTRA	2	/* right sibling has been read-ahead */
+	uint8_t		ra;
+};
+
 /*
  * Btree cursor structure.
  * This collects all information needed by the btree code in one place.
@@ -226,11 +239,6 @@ struct xfs_btree_cur
 	const struct xfs_btree_ops *bc_ops;
 	uint			bc_flags; /* btree features - below */
 	union xfs_btree_irec	bc_rec;	/* current insert/search record value */
-	struct xfs_buf	*bc_bufs[XFS_BTREE_MAXLEVELS];	/* buf ptr per level */
-	int		bc_ptrs[XFS_BTREE_MAXLEVELS];	/* key/record # */
-	uint8_t		bc_ra[XFS_BTREE_MAXLEVELS];	/* readahead bits */
-#define	XFS_BTCUR_LEFTRA	1	/* left sibling has been read-ahead */
-#define	XFS_BTCUR_RIGHTRA	2	/* right sibling has been read-ahead */
 	uint8_t		bc_nlevels;	/* number of levels in the tree */
 	uint8_t		bc_blocklog;	/* log2(blocksize) of btree blocks */
 	xfs_btnum_t	bc_btnum;	/* identifies which btree type */
@@ -246,7 +254,16 @@ struct xfs_btree_cur
 		struct xfs_btree_cur_ag	bc_ag;
 		struct xfs_btree_cur_ino bc_ino;
 	};
+
+	/* Must be at the end of the struct! */
+	struct xfs_btree_level	bc_levels[];
 };
+
+static inline size_t xfs_btree_cur_sizeof(unsigned int nlevels)
+{
+	return sizeof(struct xfs_btree_cur) +
+	       sizeof(struct xfs_btree_level) * (nlevels);
+}
 
 /* cursor flags */
 #define XFS_BTREE_LONG_PTRS		(1<<0)	/* pointers are 64bits long */
@@ -261,7 +278,6 @@ struct xfs_btree_cur
  */
 #define XFS_BTREE_STAGING		(1<<5)
 #define XFS_BTREE_IROOT_RECORDS		(1<<6)	/* iroot can store records */
-
 
 #define	XFS_BTREE_NOERROR	0
 #define	XFS_BTREE_ERROR		1
