@@ -285,6 +285,7 @@ typedef struct xfs_mount {
 #define XFS_FEAT_INOBTCNT	(1ULL << 23)	/* inobt block counts */
 #define XFS_FEAT_BIGTIME	(1ULL << 24)	/* large timestamps */
 #define XFS_FEAT_NEEDSREPAIR	(1ULL << 25)	/* needs xfs_repair */
+#define XFS_FEAT_ATOMIC_SWAP	(1ULL << 26)	/* extent swap log items */
 
 /* Mount features */
 #define XFS_FEAT_NOATTR2	(1ULL << 48)	/* disable attr2 creation */
@@ -320,6 +321,24 @@ static inline void xfs_add_ ## name (struct xfs_mount *mp) \
 	xfs_sb_version_add ## name(&mp->m_sb); \
 }
 
+/*
+ * Log incompat features are added one at a time, but they are all cleared when
+ * the log is cleaned.
+ */
+#define XFS_FEAT_INCOMPAT_LOG_ALL	(XFS_FEAT_ATOMIC_SWAP)
+
+int xfs_add_incompat_log_feature(struct xfs_mount *mp, uint64_t mount_feature,
+		uint32_t sb_feature);
+bool xfs_clear_incompat_log_features(struct xfs_mount *mp);
+
+#define __XFS_LOG_FEAT(name, NAME) \
+	__XFS_HAS_FEAT(name, NAME); \
+static inline int xfs_add_ ## name (struct xfs_mount *mp) \
+{ \
+	return xfs_add_incompat_log_feature((mp), XFS_FEAT_ ## NAME, \
+			XFS_SB_FEAT_INCOMPAT_LOG_ ## NAME); \
+}
+
 /* Superblock features */
 __XFS_ADD_FEAT(attr, ATTR)
 __XFS_HAS_FEAT(nlink, NLINK)
@@ -347,6 +366,18 @@ __XFS_HAS_FEAT(realtime, REALTIME)
 __XFS_HAS_FEAT(inobtcounts, INOBTCNT)
 __XFS_HAS_FEAT(bigtime, BIGTIME)
 __XFS_HAS_FEAT(needsrepair, NEEDSREPAIR)
+__XFS_LOG_FEAT(atomicswap, ATOMIC_SWAP)
+
+/*
+ * Decide if this filesystem can use log-assisted ("atomic") extent swapping.
+ * The atomic swap log intent items depend on the block mapping log intent
+ * items introduced with reflink and rmap.  Realtime is not supported yet.
+ */
+static inline bool xfs_can_atomicswap(struct xfs_mount *mp)
+{
+	return (xfs_has_reflink(mp) || xfs_has_rmapbt(mp)) &&
+	       !xfs_has_realtime(mp);
+}
 
 /*
  * Mount features
@@ -507,8 +538,6 @@ int	xfs_zero_extent(struct xfs_inode *ip, xfs_fsblock_t start_fsb,
 struct xfs_error_cfg * xfs_error_get_cfg(struct xfs_mount *mp,
 		int error_class, int error);
 void xfs_force_summary_recalc(struct xfs_mount *mp);
-int xfs_add_incompat_log_feature(struct xfs_mount *mp, uint32_t feature);
-bool xfs_clear_incompat_log_features(struct xfs_mount *mp);
 void xfs_mod_delalloc(struct xfs_mount *mp, int64_t delta);
 
 void xfs_hook_init(struct xfs_hook_chain *chain);

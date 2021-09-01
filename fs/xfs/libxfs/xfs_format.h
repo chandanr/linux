@@ -388,6 +388,7 @@ xfs_sb_has_incompat_feature(
 	return (sbp->sb_features_incompat & feature) != 0;
 }
 
+#define XFS_SB_FEAT_INCOMPAT_LOG_ATOMIC_SWAP (1 << 0)
 #define XFS_SB_FEAT_INCOMPAT_LOG_ALL 0
 #define XFS_SB_FEAT_INCOMPAT_LOG_UNKNOWN	~XFS_SB_FEAT_INCOMPAT_LOG_ALL
 static inline bool
@@ -397,22 +398,6 @@ xfs_sb_has_incompat_log_feature(
 {
 	return (sbp->sb_features_log_incompat & feature) != 0;
 }
-
-static inline void
-xfs_sb_remove_incompat_log_features(
-	struct xfs_sb	*sbp)
-{
-	sbp->sb_features_log_incompat &= ~XFS_SB_FEAT_INCOMPAT_LOG_ALL;
-}
-
-static inline void
-xfs_sb_add_incompat_log_features(
-	struct xfs_sb	*sbp,
-	unsigned int	features)
-{
-	sbp->sb_features_log_incompat |= features;
-}
-
 
 static inline bool
 xfs_is_quota_inode(struct xfs_sb *sbp, xfs_ino_t ino)

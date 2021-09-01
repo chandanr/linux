@@ -1245,13 +1245,15 @@ xfs_force_summary_recalc(
 int
 xfs_add_incompat_log_feature(
 	struct xfs_mount	*mp,
-	uint32_t		feature)
+	uint64_t		mount_feature,
+	uint32_t		sb_feature)
 {
 	struct xfs_dsb		*dsb;
 	int			error;
 
-	ASSERT(hweight32(feature) == 1);
-	ASSERT(!(feature & XFS_SB_FEAT_INCOMPAT_LOG_UNKNOWN));
+	ASSERT(hweight32(sb_feature) == 1);
+	ASSERT(!(sb_feature & XFS_SB_FEAT_INCOMPAT_LOG_UNKNOWN));
+	ASSERT(!(mount_feature & ~XFS_FEAT_INCOMPAT_LOG_ALL));
 
 	/*
 	 * Force the log to disk and kick the background AIL thread to reduce
@@ -1276,7 +1278,7 @@ xfs_add_incompat_log_feature(
 		goto rele;
 	}
 
-	if (xfs_sb_has_incompat_log_feature(&mp->m_sb, feature))
+	if (xfs_sb_has_incompat_log_feature(&mp->m_sb, sb_feature))
 		goto rele;
 
 	/*
@@ -1286,7 +1288,7 @@ xfs_add_incompat_log_feature(
 	 */
 	dsb = mp->m_sb_bp->b_addr;
 	xfs_sb_to_disk(dsb, &mp->m_sb);
-	dsb->sb_features_log_incompat |= cpu_to_be32(feature);
+	dsb->sb_features_log_incompat |= cpu_to_be32(sb_feature);
 	error = xfs_bwrite(mp->m_sb_bp);
 	if (error)
 		goto shutdown;
@@ -1295,7 +1297,10 @@ xfs_add_incompat_log_feature(
 	 * Add the feature bits to the incore superblock before we unlock the
 	 * buffer.
 	 */
-	xfs_sb_add_incompat_log_features(&mp->m_sb, feature);
+	spin_lock(&mp->m_sb_lock);
+	mp->m_features |= mount_feature;
+	mp->m_sb.sb_features_log_incompat |= sb_feature;
+	spin_unlock(&mp->m_sb_lock);
 	xfs_buf_relse(mp->m_sb_bp);
 
 	/* Log the superblock to disk. */
@@ -1336,14 +1341,18 @@ xfs_clear_incompat_log_features(
 	 */
 	xfs_buf_lock(mp->m_sb_bp);
 	xfs_buf_hold(mp->m_sb_bp);
+	spin_lock(&mp->m_sb_lock);
 
 	if (xfs_sb_has_incompat_log_feature(&mp->m_sb,
 				XFS_SB_FEAT_INCOMPAT_LOG_ALL)) {
 		xfs_info(mp, "Clearing log incompat feature flags.");
-		xfs_sb_remove_incompat_log_features(&mp->m_sb);
+		mp->m_features &= ~XFS_FEAT_INCOMPAT_LOG_ALL;
+		mp->m_sb.sb_features_log_incompat &=
+			~XFS_SB_FEAT_INCOMPAT_LOG_ALL;
 		ret = true;
 	}
 
+	spin_unlock(&mp->m_sb_lock);
 	xfs_buf_relse(mp->m_sb_bp);
 	return ret;
 }
