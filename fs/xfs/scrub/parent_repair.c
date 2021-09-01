@@ -129,6 +129,10 @@ findparent_walk_directory(
 	if (!S_ISDIR(VFS_I(dp)->i_mode))
 		goto out_rele;
 
+	/* Don't mix metadata and regular directory trees. */
+	if (xfs_is_metadata_inode(dp) ^ xfs_is_metadata_inode(fpi->sc->ip))
+		goto out_rele;
+
 	/*
 	 * Try to get the parent directory's IOLOCK.  We still hold the child's
 	 * IOLOCK in exclusive mode, so we must avoid an ABBA deadlock.
@@ -304,14 +308,27 @@ xrep_findparent(
 	}
 
 	/*
+	 * If we are the metadata root directory, then we are our own parent.
+	 * Return the root directory.
+	 */
+	if (sc->ip == sc->mp->m_metadirip) {
+		*parent_ino = sc->mp->m_sb.sb_metadirino;
+		return 0;
+	}
+
+	/*
 	 * If we are an unlinked directory, the parent won't have a link to us.
 	 * We might as well return the suggestion, or the root directory if the
 	 * suggestion is NULLFSINO or garbage.  There's no point in scanning
 	 * the filesystem.
 	 */
 	if (VFS_I(sc->ip)->i_nlink == 0) {
-		if (!xfs_verify_dir_ino(sc->mp, *parent_ino))
-			*parent_ino = sc->mp->m_sb.sb_rootino;
+		if (!xfs_verify_dir_ino(sc->mp, *parent_ino)) {
+			if (xfs_is_metadata_inode(sc->ip))
+				*parent_ino = sc->mp->m_sb.sb_metadirino;
+			else
+				*parent_ino = sc->mp->m_sb.sb_rootino;
+		}
 		return 0;
 	}
 
