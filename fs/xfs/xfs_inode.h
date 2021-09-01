@@ -193,6 +193,13 @@ static inline bool xfs_is_metadata_inode(struct xfs_inode *ip)
 {
 	struct xfs_mount	*mp = ip->i_mount;
 
+	if (xfs_has_metadir(mp))
+		return ip->i_diflags2 & XFS_DIFLAG2_METADATA;
+
+	/*
+	 * Before metadata directories, the only metadata inodes were the
+	 * three quota files, the realtime bitmap, and the realtime summary.
+	 */
 	return ip == mp->m_rbmip || ip == mp->m_rsumip ||
 		xfs_is_quota_inode(&mp->m_sb, ip->i_ino);
 }
