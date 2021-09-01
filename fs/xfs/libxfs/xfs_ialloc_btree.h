@@ -52,7 +52,8 @@ extern struct xfs_btree_cur *xfs_inobt_init_cursor(struct xfs_mount *mp,
 struct xfs_btree_cur *xfs_inobt_stage_cursor(struct xfs_mount *mp,
 		struct xbtree_afakeroot *afake, struct xfs_perag *pag,
 		xfs_btnum_t btnum);
-extern int xfs_inobt_maxrecs(struct xfs_mount *, int, int);
+unsigned int xfs_inobt_maxrecs(struct xfs_mount *mp, unsigned int blocklen,
+		bool leaf);
 
 /* ir_holemask to inode allocation bitmap conversion */
 uint64_t xfs_inobt_irec_to_allocmask(const struct xfs_inobt_rec_incore *i);
