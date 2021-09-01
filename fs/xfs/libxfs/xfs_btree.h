@@ -238,9 +238,10 @@ struct xfs_btree_cur
 	struct xfs_mount	*bc_mp;	/* file system mount struct */
 	const struct xfs_btree_ops *bc_ops;
 	uint			bc_flags; /* btree features - below */
-	union xfs_btree_irec	bc_rec;	/* current insert/search record value */
+	uint8_t		bc_maxlevels;	/* maximum levels for this btree type */
 	uint8_t		bc_nlevels;	/* number of levels in the tree */
 	uint8_t		bc_blocklog;	/* log2(blocksize) of btree blocks */
+	union xfs_btree_irec	bc_rec;	/* current insert/search record value */
 	xfs_btnum_t	bc_btnum;	/* identifies which btree type */
 	int		bc_statoff;	/* offset of btre stats array */
 
