@@ -141,3 +141,27 @@ xblob_free(
 	xfile_discard(blob->xfile, cookie, cookie + sizeof(key) + key.size - 1);
 	return 0;
 }
+
+/* How many bytes is this blob storage object consuming? */
+loff_t
+xblob_bytes(
+	struct xblob	*blob)
+{
+	struct kstat	statbuf;
+	int		ret;
+
+	ret = xfile_statx(blob->xfile, &statbuf);
+	if (ret)
+		return ret;
+
+	return statbuf.blocks * 512;
+}
+
+/* Drop all the blobs. */
+void
+xblob_truncate(
+	struct xblob	*blob)
+{
+	xfile_discard(blob->xfile, 0, MAX_LFS_FILESIZE);
+	blob->last_offset = 0;
+}

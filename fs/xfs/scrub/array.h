@@ -27,6 +27,8 @@ int xfbma_set(struct xfbma *array, uint64_t idx, void *ptr);
 int xfbma_insert_anywhere(struct xfbma *array, void *ptr);
 bool xfbma_is_null(struct xfbma *array, void *ptr);
 int xfbma_nullify(struct xfbma *array, uint64_t idx);
+void xfbma_truncate(struct xfbma *array);
+loff_t xfbma_bytes(struct xfbma *array);
 
 /* Append an element to the array. */
 static inline int xfbma_append(struct xfbma *array, void *ptr)

@@ -495,5 +495,6 @@ int xfs_attr_remove_iter(struct xfs_delattr_context *dac);
 bool xfs_attr_namecheck(const void *name, size_t length);
 void xfs_delattr_context_init(struct xfs_delattr_context *dac,
 			      struct xfs_da_args *args);
+int xfs_attr_sf_totsize(struct xfs_inode *dp);
 
 #endif	/* __XFS_ATTR_H__ */

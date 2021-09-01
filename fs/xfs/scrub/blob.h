@@ -20,5 +20,7 @@ int xblob_get(struct xblob *blob, xblob_cookie cookie, void *ptr,
 int xblob_put(struct xblob *blob, xblob_cookie *cookie, void *ptr,
 		uint32_t size);
 int xblob_free(struct xblob *blob, xblob_cookie cookie);
+loff_t xblob_bytes(struct xblob *blob);
+void xblob_truncate(struct xblob *blob);
 
 #endif /* __XFS_SCRUB_BLOB_H__ */
