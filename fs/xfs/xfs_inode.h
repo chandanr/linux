@@ -449,10 +449,8 @@ int		xfs_iflush_cluster(struct xfs_buf *);
 void		xfs_lock_two_inodes(struct xfs_inode *ip0, uint ip0_mode,
 				struct xfs_inode *ip1, uint ip1_mode);
 
-int xfs_init_new_inode(struct user_namespace *mnt_userns, struct xfs_trans *tp,
-		struct xfs_inode *pip, xfs_ino_t ino, umode_t mode,
-		xfs_nlink_t nlink, dev_t rdev, prid_t prid, bool init_xattrs,
-		struct xfs_inode **ipp);
+int xfs_icreate(struct xfs_trans *tp, xfs_ino_t ino,
+		const struct xfs_icreate_args *args, struct xfs_inode **ipp);
 
 static inline int
 xfs_itruncate_extents(
@@ -526,5 +524,9 @@ void xfs_bumplink(struct xfs_trans *tp, struct xfs_inode *ip);
 void xfs_inode_count_blocks(struct xfs_trans *tp, struct xfs_inode *ip,
 		xfs_filblks_t *dblocks, xfs_filblks_t *rblocks);
 unsigned int xfs_inode_alloc_unitsize(struct xfs_inode *ip);
+
+void xfs_icreate_args_inherit(struct xfs_icreate_args *args, struct xfs_inode *dp,
+		struct user_namespace *mnt_userns, umode_t mode);
+void xfs_icreate_args_rootfile(struct xfs_icreate_args *args, umode_t mode);
 
 #endif	/* __XFS_INODE_H__ */
