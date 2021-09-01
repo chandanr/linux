@@ -74,6 +74,15 @@ struct xfs_dqtrx {
 	int64_t		qt_icount_delta;  /* dquot inode count changes */
 };
 
+/*
+ * Parameters for xfs_trans_apply_dquot_deltas hook.  The hook arg parameter
+ * is 1 to apply and 0 to cancel the update.
+ */
+struct xfs_trans_apply_dquot_deltas_params {
+	struct xfs_trans	*tp;
+	struct xfs_dquot	*dqp;
+};
+
 #ifdef CONFIG_XFS_QUOTA
 extern void xfs_trans_dup_dqinfo(struct xfs_trans *, struct xfs_trans *);
 extern void xfs_trans_free_dqinfo(struct xfs_trans *);
@@ -179,5 +188,15 @@ xfs_quota_unreserve_blkres(struct xfs_inode *ip, int64_t blocks)
 }
 
 extern int xfs_mount_reset_sbqflags(struct xfs_mount *);
+
+#if IS_ENABLED(CONFIG_XFS_QUOTA) && IS_ENABLED(CONFIG_XFS_ONLINE_SCRUB)
+extern void xfs_trans_mod_ino_dquot(struct xfs_trans *tp, struct xfs_inode *ip,
+		struct xfs_dquot *dqp, uint field, int64_t delta);
+#elif IS_ENABLED(CONFIG_XFS_QUOTA)
+# define xfs_trans_mod_ino_dquot(tp, ip, dqp, field, delta) \
+		xfs_trans_mod_dquot((tp), (dqp), (field), (delta))
+#else
+# define xfs_trans_mod_ino_dquot(tp, ip, dqp, field, delta)
+#endif
 
 #endif	/* __XFS_QUOTA_H__ */
