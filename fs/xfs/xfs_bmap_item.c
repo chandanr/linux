@@ -307,6 +307,8 @@ xfs_bmap_update_log_item(
 		map->me_flags |= XFS_BMAP_EXTENT_UNWRITTEN;
 	if (bmap->bi_whichfork == XFS_ATTR_FORK)
 		map->me_flags |= XFS_BMAP_EXTENT_ATTR_FORK;
+	if (xfs_ifork_is_realtime(bmap->bi_owner, bmap->bi_whichfork))
+		map->me_flags |= XFS_BMAP_EXTENT_REALTIME;
 }
 
 static struct xfs_log_item *
