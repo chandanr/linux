@@ -156,7 +156,11 @@ xfs-y				+= $(addprefix scrub/, \
 				   xfile.o \
 				   )
 
-xfs-$(CONFIG_XFS_RT)		+= scrub/rtbitmap.o
+xfs-$(CONFIG_XFS_RT)		+= $(addprefix scrub/, \
+				   rtbitmap.o \
+				   rtsummary.o \
+				   )
+
 xfs-$(CONFIG_XFS_QUOTA)		+= scrub/quota.o
 
 # online repair
