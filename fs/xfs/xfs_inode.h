@@ -443,6 +443,9 @@ uint		xfs_ilock_attr_map_shared(struct xfs_inode *);
 
 uint		xfs_ip2xflags(struct xfs_inode *);
 int		xfs_ifree(struct xfs_trans *, struct xfs_inode *);
+int		xfs_ifree_cluster(struct xfs_trans *tp, struct xfs_perag *pag,
+				struct xfs_inode *free_ip,
+				struct xfs_icluster *xic);
 int		xfs_itruncate_extents_flags(struct xfs_trans **,
 				struct xfs_inode *, int, xfs_fsize_t, int);
 void		xfs_iext_realloc(xfs_inode_t *, int, int);
