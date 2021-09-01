@@ -1837,9 +1837,25 @@ xfs_dialloc(
 		}
 		xfs_perag_put(pag);
 	}
+	if (error)
+		goto out;
 
-	if (!error)
-		*new_ino = ino;
+	/*
+	 * Protect against obviously corrupt allocation btree records. Later
+	 * xfs_iget checks will catch re-allocation of other active in-memory
+	 * and on-disk inodes. If we don't catch reallocating the parent inode
+	 * here we will deadlock in xfs_iget() so we have to do these checks
+	 * first.
+	 */
+	if (ino == parent || !xfs_verify_dir_ino(mp, ino)) {
+		xfs_alert(mp, "Allocated a known in-use inode 0x%llx!", ino);
+		xfs_ag_mark_sick(pag, XFS_SICK_AG_INOBT);
+		error = -EFSCORRUPTED;
+		goto out;
+	}
+
+	*new_ino = ino;
+out:
 	xfs_perag_put(pag);
 	return error;
 }
