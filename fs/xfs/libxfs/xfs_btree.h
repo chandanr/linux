@@ -161,6 +161,9 @@ struct xfs_btree_ops {
 	int	(*recs_inorder)(struct xfs_btree_cur *cur,
 				const union xfs_btree_rec *r1,
 				const union xfs_btree_rec *r2);
+
+	/* Functions for manipulating the btree root block. */
+	const struct xfs_ifork_broot_ops *iroot_ops;
 };
 
 /*

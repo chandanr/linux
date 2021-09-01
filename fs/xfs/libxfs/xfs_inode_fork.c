@@ -364,50 +364,6 @@ xfs_iroot_free(
 	ifp->if_broot = NULL;
 }
 
-/* Move the bmap btree root from one incore buffer to another. */
-static void
-xfs_ifork_move_broot(
-	struct xfs_inode	*ip,
-	int			whichfork,
-	struct xfs_btree_block	*dst_broot,
-	size_t			dst_bytes,
-	struct xfs_btree_block	*src_broot,
-	size_t			src_bytes,
-	unsigned int		numrecs)
-{
-	struct xfs_mount	*mp = ip->i_mount;
-	void			*dptr;
-	void			*sptr;
-
-	ASSERT(xfs_bmap_bmdr_space(src_broot) <= XFS_IFORK_SIZE(ip, whichfork));
-
-	/*
-	 * We always have to move the pointers because they are not butted
-	 * against the btree block header.
-	 */
-	if (numrecs) {
-		sptr = xfs_bmap_broot_ptr_addr(mp, src_broot, 1, src_bytes);
-		dptr = xfs_bmap_broot_ptr_addr(mp, dst_broot, 1, dst_bytes);
-		memmove(dptr, sptr, numrecs * sizeof(xfs_fsblock_t));
-	}
-
-	if (src_broot == dst_broot)
-		return;
-
-	/*
-	 * If the root is being totally relocated, we have to migrate the block
-	 * header and the keys that come after it.
-	 */
-	memcpy(dst_broot, src_broot, xfs_bmbt_block_len(mp));
-
-	/* Now copy the keys, which come right after the header. */
-	if (numrecs) {
-		sptr = xfs_bmbt_key_addr(mp, src_broot, 1);
-		dptr = xfs_bmbt_key_addr(mp, dst_broot, 1);
-		memcpy(dptr, sptr, numrecs * sizeof(struct xfs_bmbt_key));
-	}
-}
-
 /*
  * Reallocate the space for if_broot based on the number of records
  * being added or deleted as indicated in rec_diff.  Move the records
@@ -421,24 +377,21 @@ xfs_ifork_move_broot(
  * if we are adding records, one will be allocated.  The caller must also
  * not request that the number of records go below zero, although
  * it can go to zero.
- *
- * ip -- the inode whose if_broot area is changing
- * ext_diff -- the change in the number of records, positive or negative,
- *	 requested for the if_broot array.
  */
 void
 xfs_iroot_realloc(
-	struct xfs_inode	*ip,
-	int			rec_diff,
-	int			whichfork)
+	struct xfs_inode		*ip,
+	int				whichfork,
+	const struct xfs_ifork_broot_ops *ops,
+	int				rec_diff)
 {
-	struct xfs_mount	*mp = ip->i_mount;
-	struct xfs_ifork	*ifp = XFS_IFORK_PTR(ip, whichfork);
-	struct xfs_btree_block	*new_broot;
-	size_t			new_size;
-	size_t			old_size = ifp->if_broot_bytes;
-	int			cur_max;
-	int			new_max;
+	struct xfs_mount		*mp = ip->i_mount;
+	struct xfs_ifork		*ifp = XFS_IFORK_PTR(ip, whichfork);
+	struct xfs_btree_block		*new_broot;
+	size_t				new_size;
+	size_t				old_size = ifp->if_broot_bytes;
+	int				cur_max;
+	int				new_max;
 
 	/* Handle degenerate cases. */
 	if (rec_diff == 0)
@@ -451,16 +404,16 @@ xfs_iroot_realloc(
 	if (old_size == 0) {
 		ASSERT(rec_diff > 0);
 
-		new_size = xfs_bmap_broot_space_calc(mp, rec_diff);
+		new_size = ops->size(mp, rec_diff);
 		xfs_iroot_alloc(ip, whichfork, new_size);
 		return;
 	}
 
 	/* Compute the new and old record count and space requirements. */
-	cur_max = xfs_bmbt_maxrecs(mp, old_size, false);
+	cur_max = ops->maxrecs(mp, old_size, false);
 	new_max = cur_max + rec_diff;
 	ASSERT(new_max >= 0);
-	new_size = xfs_bmap_broot_space_calc(mp, new_max);
+	new_size = ops->size(mp, new_max);
 
 	if (rec_diff > 0) {
 		/*
@@ -471,7 +424,7 @@ xfs_iroot_realloc(
 		ifp->if_broot = krealloc(ifp->if_broot, new_size,
 					 GFP_NOFS | __GFP_NOFAIL);
 		ifp->if_broot_bytes = new_size;
-		xfs_ifork_move_broot(ip, whichfork, ifp->if_broot, new_size,
+		ops->move(ip, whichfork, ifp->if_broot, new_size,
 				ifp->if_broot, old_size, cur_max);
 		return;
 	}
@@ -488,14 +441,13 @@ xfs_iroot_realloc(
 
 	/* Reallocate the btree root and move the contents. */
 	new_broot = kmem_alloc(new_size, KM_NOFS);
-	xfs_ifork_move_broot(ip, whichfork, new_broot, new_size, ifp->if_broot,
-			old_size, new_max);
+	ops->move(ip, whichfork, new_broot, new_size, ifp->if_broot,
+			ifp->if_broot_bytes, new_max);
 
 	kmem_free(ifp->if_broot);
 	ifp->if_broot = new_broot;
 	ifp->if_broot_bytes = new_size;
 }
-
 
 /*
  * This is called when the amount of space needed for if_data
