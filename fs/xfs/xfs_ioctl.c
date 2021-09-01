@@ -1716,6 +1716,10 @@ xfs_ioc_scrub_metadata(
 	if (copy_from_user(&scrub, arg, sizeof(scrub)))
 		return -EFAULT;
 
+	if ((scrub.sm_flags & XFS_SCRUB_IFLAG_FREEZE_OK) &&
+			!capable(CAP_SYS_ADMIN))
+		return -EPERM;
+
 	error = xfs_scrub_metadata(file, &scrub);
 	if (error)
 		return error;
