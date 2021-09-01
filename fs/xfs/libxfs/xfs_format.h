@@ -912,7 +912,8 @@ enum xfs_dinode_fmt {
 #define XFS_DFORK_APTR(dip)	\
 	(XFS_DFORK_DPTR(dip) + XFS_DFORK_BOFF(dip))
 #define XFS_DFORK_PTR(dip,w)	\
-	((w) == XFS_DATA_FORK ? XFS_DFORK_DPTR(dip) : XFS_DFORK_APTR(dip))
+	((void *)((w) == XFS_DATA_FORK ? XFS_DFORK_DPTR(dip) : \
+					 XFS_DFORK_APTR(dip)))
 
 #define XFS_DFORK_FORMAT(dip,w) \
 	((w) == XFS_DATA_FORK ? \
