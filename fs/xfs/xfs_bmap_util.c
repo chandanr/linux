@@ -28,6 +28,7 @@
 #include "xfs_icache.h"
 #include "xfs_iomap.h"
 #include "xfs_reflink.h"
+#include "xfs_swapext.h"
 
 /* Kernel only BMAP related definitions and functions */
 

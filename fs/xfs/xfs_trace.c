@@ -36,6 +36,7 @@
 #include "xfs_error.h"
 #include "xfs_bmap.h"
 #include "xfs_swapext.h"
+#include "xfs_xchgrange.h"
 
 /*
  * We include this last to have the helpers above available for the trace
