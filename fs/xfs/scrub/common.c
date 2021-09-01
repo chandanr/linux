@@ -27,6 +27,7 @@
 #include "xfs_attr.h"
 #include "xfs_reflink.h"
 #include "xfs_ag.h"
+#include "xfs_error.h"
 #include "scrub/scrub.h"
 #include "scrub/common.h"
 #include "scrub/trace.h"
@@ -79,6 +80,15 @@ __xchk_process_error(
 				sc->ip ? sc->ip : XFS_I(file_inode(sc->file)),
 				sc->sm, *error);
 		break;
+	case -ECANCELED:
+		/*
+		 * ECANCELED here means that the caller set one of the scrub
+		 * outcome flags (corrupt, xfail, xcorrupt) and wants to exit
+		 * quickly.  Set error to zero and do not continue.
+		 */
+		trace_xchk_op_error(sc, agno, bno, *error, ret_ip);
+		*error = 0;
+		break;
 	case -EFSBADCRC:
 	case -EFSCORRUPTED:
 		/* Note the badness but don't abort. */
@@ -86,8 +96,7 @@ __xchk_process_error(
 		*error = 0;
 		fallthrough;
 	default:
-		trace_xchk_op_error(sc, agno, bno, *error,
-				ret_ip);
+		trace_xchk_op_error(sc, agno, bno, *error, ret_ip);
 		break;
 	}
 	return false;
@@ -131,6 +140,16 @@ __xchk_fblock_process_error(
 	case -EDEADLOCK:
 		/* Used to restart an op with deadlock avoidance. */
 		trace_xchk_deadlock_retry(sc->ip, sc->sm, *error);
+		break;
+	case -ECANCELED:
+		/*
+		 * ECANCELED here means that the caller set one of the scrub
+		 * outcome flags (corrupt, xfail, xcorrupt) and wants to exit
+		 * quickly.  Set error to zero and do not continue.
+		 */
+		trace_xchk_file_op_error(sc, whichfork, offset, *error,
+				ret_ip);
+		*error = 0;
 		break;
 	case -EFSBADCRC:
 	case -EFSCORRUPTED:
@@ -221,6 +240,17 @@ xchk_block_set_corrupt(
 {
 	sc->sm->sm_flags |= XFS_SCRUB_OFLAG_CORRUPT;
 	trace_xchk_block_error(sc, xfs_buf_daddr(bp), __return_address);
+}
+
+/* Record a corrupt quota counter. */
+void
+xchk_qcheck_set_corrupt(
+	struct xfs_scrub	*sc,
+	unsigned int		dqtype,
+	xfs_dqid_t		id)
+{
+	sc->sm->sm_flags |= XFS_SCRUB_OFLAG_CORRUPT;
+	trace_xchk_qcheck_error(sc, dqtype, id, __return_address);
 }
 
 /* Record a corruption while cross-referencing. */
@@ -912,4 +942,117 @@ xchk_start_reaping(
 		xfs_blockgc_start(sc->mp);
 	}
 	sc->flags &= ~XCHK_REAPING_DISABLED;
+}
+
+/*
+ * Set the bits in @irec's free mask that correspond to the inodes before
+ * @agino so that we skip them.  This is how we restart an inode walk that was
+ * interrupted in the middle of an inode record.
+ */
+STATIC void
+xchk_iwalk_adjust_start(
+	xfs_agino_t			agino,	/* starting inode of chunk */
+	struct xfs_inobt_rec_incore	*irec)	/* btree record */
+{
+	int				idx;	/* index into inode chunk */
+
+	idx = agino - irec->ir_startino;
+
+	irec->ir_free |= xfs_inobt_maskn(0, idx);
+	irec->ir_freecount = hweight64(irec->ir_free);
+}
+
+/*
+ * Set *cursor to the next allocated inode after whatever it's set to now.
+ * If there are no more inodes in this AG, cursor is set to NULLAGINO.
+ */
+int
+xchk_iwalk_find_next(
+	struct xfs_mount	*mp,
+	struct xfs_trans	*tp,
+	struct xfs_buf		*agi_bp,
+	struct xfs_perag	*pag,
+	xfs_agino_t		*cursor)
+{
+	struct xfs_inobt_rec_incore	rec;
+	struct xfs_btree_cur	*cur;
+	xfs_agnumber_t		agno = pag->pag_agno;
+	xfs_agino_t		lastino = NULLAGINO;
+	xfs_agino_t		first, last;
+	xfs_agino_t		agino = *cursor;
+	int			has_rec;
+	int			error;
+
+	/* If the cursor is beyond the end of this AG, move to the next one. */
+	xfs_agino_range(mp, agno, &first, &last);
+	if (agino > last) {
+		*cursor = NULLAGINO;
+		return 0;
+	}
+
+	/*
+	 * Look up the inode chunk for the current cursor position.  If there
+	 * is no chunk here, we want the next one.
+	 */
+	cur = xfs_inobt_init_cursor(mp, tp, agi_bp, pag, XFS_BTNUM_INO);
+	error = xfs_inobt_lookup(cur, agino, XFS_LOOKUP_LE, &has_rec);
+	if (!error && !has_rec)
+		error = xfs_btree_increment(cur, 0, &has_rec);
+	for (; !error; error = xfs_btree_increment(cur, 0, &has_rec)) {
+		/*
+		 * If we've run out of inobt records in this AG, move the
+		 * cursor on to the next AG and exit.  The caller can try
+		 * again with the next AG.
+		 */
+		if (!has_rec) {
+			*cursor = NULLAGINO;
+			break;
+		}
+
+		error = xfs_inobt_get_rec(cur, &rec, &has_rec);
+		if (error)
+			break;
+		if (!has_rec) {
+			error = -EFSCORRUPTED;
+			break;
+		}
+
+		/* Make sure that we always move forward. */
+		if (lastino != NULLAGINO &&
+		    XFS_IS_CORRUPT(mp, lastino >= rec.ir_startino)) {
+			error = -EFSCORRUPTED;
+			break;
+		}
+		lastino = rec.ir_startino + XFS_INODES_PER_CHUNK - 1;
+
+		/*
+		 * If this record only covers inodes that come before the
+		 * cursor, advance to the next record.
+		 */
+		if (rec.ir_startino + XFS_INODES_PER_CHUNK <= agino)
+			continue;
+
+		/*
+		 * If the incoming lookup put us in the middle of an inobt
+		 * record, mark it and the previous inodes "free" so that the
+		 * search for allocated inodes will start at the cursor.  Use
+		 * funny math to avoid overflowing the bit shift.
+		 */
+		if (agino >= rec.ir_startino)
+			xchk_iwalk_adjust_start(agino + 1, &rec);
+
+		/*
+		 * If there are allocated inodes in this chunk, find them,
+		 * and update the cursor.
+		 */
+		if (rec.ir_freecount < XFS_INODES_PER_CHUNK) {
+			int	next = xfs_lowbit64(~rec.ir_free);
+
+			*cursor = rec.ir_startino + next;
+			break;
+		}
+	}
+
+	xfs_btree_del_cursor(cur, error);
+	return error;
 }
