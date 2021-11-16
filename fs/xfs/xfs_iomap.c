@@ -243,7 +243,8 @@ xfs_iomap_write_direct(
 	if (error)
 		return error;
 
-	error = xfs_iext_count_may_overflow(ip, XFS_DATA_FORK, nr_exts);
+	error = xfs_trans_inode_ensure_nextents(&tp, ip, XFS_DATA_FORK,
+			nr_exts);
 	if (error)
 		goto out_trans_cancel;
 
@@ -546,7 +547,7 @@ xfs_iomap_write_unwritten(
 		if (error)
 			return error;
 
-		error = xfs_iext_count_may_overflow(ip, XFS_DATA_FORK,
+		error = xfs_trans_inode_ensure_nextents(&tp, ip, XFS_DATA_FORK,
 				XFS_IEXT_WRITE_UNWRITTEN_CNT);
 		if (error)
 			goto error_on_bmapi_transaction;
