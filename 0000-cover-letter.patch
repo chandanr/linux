@@ -1,0 +1,183 @@
+From 466fd9def4f5b8c6414aa13befa971de04b39e0b Mon Sep 17 00:00:00 2001
+From: Chandan Babu R <chandan.babu@oracle.com>
+Date: Tue, 14 Dec 2021 05:11:32 +0000
+Subject: [PATCH V4 00/16] xfs: Extend per-inode extent counters
+To: linux-xfs@vger.kernel.org
+Cc: david@fromorbit.com
+
+The commit xfs: fix inode fork extent count overflow
+(3f8a4f1d876d3e3e49e50b0396eaffcc4ba71b08) mentions that 10 billion
+data fork extents should be possible to create. However the
+corresponding on-disk field has a signed 32-bit type. Hence this
+patchset extends the per-inode data fork extent counter to 64 bits out
+of which 48 bits are used to store the extent count.
+
+Also, XFS has an attribute fork extent counter which is 16 bits
+wide. A workload that,
+1. Creates 1 million 255-byte sized xattrs,
+2. Deletes 50% of these xattrs in an alternating manner,
+3. Tries to insert 400,000 new 255-byte sized xattrs
+   causes the xattr extent counter to overflow.
+
+Dave tells me that there are instances where a single file has more
+than 100 million hardlinks. With parent pointers being stored in
+xattrs, we will overflow the signed 16-bits wide xattr extent counter
+when large number of hardlinks are created. Hence this patchset
+extends the on-disk field to 32-bits.
+
+The following changes are made to accomplish this,
+1. A 64-bit inode field is carved out of existing di_pad and
+   di_flushiter fields to hold the 64-bit data fork extent counter.
+2. The existing 32-bit inode data fork extent counter will be used to
+   hold the attr fork extent counter.
+3. A new incompat superblock flag to prevent older kernels from mounting
+   the filesystem.
+
+The patchset has been tested by executing xfstests with the following
+mkfs.xfs options,
+1. -m crc=0 -b size=1k
+2. -m crc=0 -b size=4k
+3. -m crc=0 -b size=512
+4. -m rmapbt=1,reflink=1 -b size=1k
+5. -m rmapbt=1,reflink=1 -b size=4k
+
+Each of the above test scenarios were executed on the following
+combinations (For V4 FS test scenario, the last combination
+i.e. "Patched (enable extcnt64bit)", was omitted).
+|-------------------------------+-----------|
+| Xfsprogs                      | Kernel    |
+|-------------------------------+-----------|
+| Unpatched                     | Patched   |
+| Patched (disable extcnt64bit) | Unpatched |
+| Patched (disable extcnt64bit) | Patched   |
+| Patched (enable extcnt64bit)  | Patched   |
+|-------------------------------+-----------|
+
+I have also written a test (yet to be converted into xfstests format)
+to check if the correct extent counter fields are updated with/without
+the new incompat flag. I have also fixed an existing test to work with
+the new extent counter fields.
+
+These patches can also be obtained from
+https://github.com/chandanr/linux.git at branch
+xfs-incompat-extend-extcnt-v4.
+
+I will be posting the changes associated with xfsprogs separately.
+
+Changelog:
+V3 -> V4:
+1. Rebase patchset on xfs-linux/for-next branch.
+2. Carve out a 64-bit inode field out of the existing di_pad and
+   di_flushiter fields to hold the 64-bit data fork extent counter.
+3. Use the existing 32-bit inode data fork extent counter to hold the
+   attr fork extent counter.
+4. Verify the contents of newly introduced inode fields immediately
+   after the inode has been read from the disk.
+5. Upgrade inodes to be able to hold large extent counters when
+   reading them from disk.
+6. Use XFS_BULK_IREQ_NREXT64 as the flag that userspace can use to
+   indicate that it can read 64-bit data fork extent counter.
+7. Bulkstat ioctl returns -EOVERFLOW when userspace is not capable of
+   working with large extent counters and inode's data fork extent
+   count is larger than INT32_MAX.
+
+V2 -> V3:
+1. Define maximum extent length as a function of
+   BMBT_BLOCKCOUNT_BITLEN.
+2. Introduce xfs_iext_max_nextents() function in the patch series
+   before renaming MAXEXTNUM/MAXAEXTNUM. This is done to reduce
+   proliferation of macros indicating maximum extent count for data
+   and attribute forks.
+3. Define xfs_dfork_nextents() as an inline function.
+4. Use xfs_rfsblock_t as the data type for variables that hold block
+   count.
+5. xfs_dfork_nextents() now returns -EFSCORRUPTED when an invalid fork
+   is passed as an argument.
+6. The following changes are done to enable bulkstat ioctl to report
+   64-bit extent counters,
+   - Carve out a new 64-bit field xfs_bulkstat->bs_extents64 from
+     xfs_bulkstat->bs_pad[].
+   - Carve out a new 64-bit field xfs_bulk_ireq->bulkstat_flags from
+     xfs_bulk_ireq->reserved[] to hold bulkstat specific operational
+     flags. Introduce XFS_IBULK_NREXT64 flag to indicate that
+     userspace has the necessary infrastructure to receive 64-bit
+     extent counters.
+   - Define the new flag XFS_BULK_IREQ_BULKSTAT for userspace to
+     indicate that xfs_bulk_ireq->bulkstat_flags has valid flags set.
+7. Rename the incompat flag from XFS_SB_FEAT_INCOMPAT_EXTCOUNT_64BIT
+   to XFS_SB_FEAT_INCOMPAT_NREXT64.
+8. Add a new helper function xfs_inode_to_disk_iext_counters() to
+   convert from incore inode extent counters to ondisk inode extent
+   counters.
+9. Reuse XFS_ERRTAG_REDUCE_MAX_IEXTENTS error tag to skip reporting
+   inodes with more than 10 extents when bulkstat ioctl is invoked by
+   userspace.
+10. Introduce the new per-inode XFS_DIFLAG2_NREXT64 flag to indicate
+    that the inode uses 64-bit extent counter. This is used to allow
+    administrators to upgrade existing filesystems.
+11. Export presence of XFS_SB_FEAT_INCOMPAT_NREXT64 feature to
+    userspace via XFS_IOC_FSGEOMETRY ioctl.
+
+V1 -> V2:
+1. Rebase patches on top of Darrick's btree-dynamic-depth branch.
+2. Add new bulkstat ioctl version to support 64-bit data fork extent
+   counter field.
+3. Introduce new error tag to verify if the old bulkstat ioctls skip
+   reporting inodes with large data fork extent counters.
+
+Chandan Babu R (16):
+  xfs: Move extent count limits to xfs_format.h
+  xfs: Introduce xfs_iext_max_nextents() helper
+  xfs: Use xfs_extnum_t instead of basic data types
+  xfs: Introduce xfs_dfork_nextents() helper
+  xfs: Use basic types to define xfs_log_dinode's di_nextents and
+    di_anextents
+  xfs: Promote xfs_extnum_t and xfs_aextnum_t to 64 and 32-bits
+    respectively
+  xfs: Introduce XFS_SB_FEAT_INCOMPAT_NREXT64 and associated per-fs
+    feature bit
+  xfs: Introduce XFS_FSOP_GEOM_FLAGS_NREXT64
+  xfs: Introduce XFS_DIFLAG2_NREXT64 and associated helpers
+  xfs: Use xfs_rfsblock_t to count maximum blocks that can be used by
+    BMBT
+  xfs: Introduce macros to represent new maximum extent counts for
+    data/attr forks
+  xfs: Introduce per-inode 64-bit extent counters
+  xfs: Conditionally upgrade existing inodes to use 64-bit extent
+    counters
+  xfs: Enable bulkstat ioctl to support 64-bit per-inode extent counters
+  xfs: Add XFS_SB_FEAT_INCOMPAT_NREXT64 to the list of supported flags
+  xfs: Define max extent length based on on-disk format definition
+
+ fs/xfs/libxfs/xfs_alloc.c       |  2 +-
+ fs/xfs/libxfs/xfs_bmap.c        | 78 +++++++++++++++---------------
+ fs/xfs/libxfs/xfs_bmap_btree.c  |  2 +-
+ fs/xfs/libxfs/xfs_format.h      | 52 +++++++++++++++-----
+ fs/xfs/libxfs/xfs_fs.h          | 13 +++--
+ fs/xfs/libxfs/xfs_ialloc.c      |  2 +
+ fs/xfs/libxfs/xfs_inode_buf.c   | 84 +++++++++++++++++++++++++-------
+ fs/xfs/libxfs/xfs_inode_fork.c  | 14 +++---
+ fs/xfs/libxfs/xfs_inode_fork.h  | 59 ++++++++++++++++++++++-
+ fs/xfs/libxfs/xfs_log_format.h  | 22 +++++++--
+ fs/xfs/libxfs/xfs_sb.c          |  5 ++
+ fs/xfs/libxfs/xfs_trans_resv.c  | 11 +++--
+ fs/xfs/libxfs/xfs_types.h       | 11 +----
+ fs/xfs/scrub/bmap.c             |  2 +-
+ fs/xfs/scrub/inode.c            | 20 ++++----
+ fs/xfs/xfs_bmap_util.c          | 14 +++---
+ fs/xfs/xfs_inode.c              |  4 +-
+ fs/xfs/xfs_inode.h              |  5 ++
+ fs/xfs/xfs_inode_item.c         | 23 +++++++--
+ fs/xfs/xfs_inode_item_recover.c | 85 ++++++++++++++++++++++++++++-----
+ fs/xfs/xfs_ioctl.c              |  3 ++
+ fs/xfs/xfs_iomap.c              | 28 +++++------
+ fs/xfs/xfs_itable.c             | 24 +++++++++-
+ fs/xfs/xfs_itable.h             |  2 +
+ fs/xfs/xfs_iwalk.h              |  7 ++-
+ fs/xfs/xfs_mount.h              |  2 +
+ fs/xfs/xfs_trace.h              |  4 +-
+ 27 files changed, 428 insertions(+), 150 deletions(-)
+
+-- 
+2.25.1
+
