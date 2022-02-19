@@ -780,6 +780,7 @@ xfs_growfs_rt_alloc(
 	int			resblks;	/* space reservation */
 	enum xfs_blft		buf_type;
 	struct xfs_trans	*tp;
+	bool			unlock_inode;
 
 	if (ip == mp->m_rsumip)
 		buf_type = XFS_BLFT_RTSUMMARY_BUF;
@@ -802,9 +803,10 @@ xfs_growfs_rt_alloc(
 		 * Lock the inode.
 		 */
 		xfs_ilock(ip, XFS_ILOCK_EXCL);
-		xfs_trans_ijoin(tp, ip, XFS_ILOCK_EXCL);
+		xfs_trans_ijoin(tp, ip, 0);
+		unlock_inode = true;
 
-		error = xfs_iext_count_may_overflow(ip, XFS_DATA_FORK,
+		error = xfs_trans_inode_ensure_nextents(&tp, ip, XFS_DATA_FORK,
 				XFS_IEXT_ADD_NOSPLIT_CNT);
 		if (error)
 			goto out_trans_cancel;
@@ -824,7 +826,11 @@ xfs_growfs_rt_alloc(
 		 */
 		error = xfs_trans_commit(tp);
 		if (error)
-			return error;
+			goto out_trans_cancel;
+
+		unlock_inode = false;
+		xfs_iunlock(ip, XFS_ILOCK_EXCL);
+
 		/*
 		 * Now we need to clear the allocated blocks.
 		 * Do this one block per transaction, to keep it simple.
@@ -874,6 +880,8 @@ xfs_growfs_rt_alloc(
 
 out_trans_cancel:
 	xfs_trans_cancel(tp);
+	if (unlock_inode)
+		xfs_iunlock(ip, XFS_ILOCK_EXCL);
 	return error;
 }
 
