@@ -615,7 +615,7 @@ xfs_reflink_end_cow_extent(
 	xfs_ilock(ip, XFS_ILOCK_EXCL);
 	xfs_trans_ijoin(tp, ip, 0);
 
-	error = xfs_iext_count_may_overflow(ip, XFS_DATA_FORK,
+	error = xfs_trans_inode_ensure_nextents(&tp, ip, XFS_DATA_FORK,
 			XFS_IEXT_REFLINK_END_COW_CNT);
 	if (error)
 		goto out_cancel;
@@ -1117,7 +1117,8 @@ xfs_reflink_remap_extent(
 	if (dmap_written)
 		++iext_delta;
 
-	error = xfs_iext_count_may_overflow(ip, XFS_DATA_FORK, iext_delta);
+	error = xfs_trans_inode_ensure_nextents(&tp, ip, XFS_DATA_FORK,
+			iext_delta);
 	if (error)
 		goto out_cancel;
 

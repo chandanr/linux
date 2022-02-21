@@ -757,3 +757,40 @@ xfs_iext_count_may_overflow(
 
 	return 0;
 }
+
+/*
+ * Ensure that the inode has the ability to add the specified number of
+ * extents.  Caller must hold ILOCK_EXCL and have joined the inode to
+ * the transaction.  Upon return, the inode will still be in this state
+ * upon return and the transaction will be clean.
+ */
+int
+xfs_trans_inode_ensure_nextents(
+	struct xfs_trans	**tpp,
+	struct xfs_inode	*ip,
+	int			whichfork,
+	int			nr_to_add)
+{
+	int			error;
+
+	error = xfs_iext_count_may_overflow(ip, whichfork, nr_to_add);
+	if (!error)
+		return 0;
+
+	/*
+	 * Try to upgrade if the extent count fields aren't large
+	 * enough.
+	 */
+	if (!xfs_has_nrext64(ip->i_mount) ||
+	    (ip->i_diflags2 & XFS_DIFLAG2_NREXT64))
+		return error;
+
+	ip->i_diflags2 |= XFS_DIFLAG2_NREXT64;
+	xfs_trans_log_inode(*tpp, ip, XFS_ILOG_CORE);
+
+	error = xfs_trans_roll(tpp);
+	if (error)
+		return error;
+
+	return xfs_iext_count_may_overflow(ip, whichfork, nr_to_add);
+}

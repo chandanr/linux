@@ -505,7 +505,8 @@ xfs_bui_item_recover(
 	else
 		iext_delta = XFS_IEXT_PUNCH_HOLE_CNT;
 
-	error = xfs_iext_count_may_overflow(ip, whichfork, iext_delta);
+	error = xfs_trans_inode_ensure_nextents(&tp, ip, whichfork,
+			iext_delta);
 	if (error)
 		goto err_cancel;
 
