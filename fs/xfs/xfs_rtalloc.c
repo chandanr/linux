@@ -806,7 +806,7 @@ xfs_growfs_rt_alloc(
 		xfs_trans_ijoin(tp, ip, 0);
 		unlock_inode = true;
 
-		error = xfs_iext_count_may_overflow(ip, XFS_DATA_FORK,
+		error = xfs_trans_inode_ensure_nextents(&tp, ip, XFS_DATA_FORK,
 				XFS_IEXT_ADD_NOSPLIT_CNT);
 		if (error)
 			goto out_trans_cancel;

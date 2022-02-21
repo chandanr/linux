@@ -774,7 +774,8 @@ xfs_attr_set(
 		return error;
 
 	if (args->value || xfs_inode_hasattr(dp)) {
-		error = xfs_iext_count_may_overflow(dp, XFS_ATTR_FORK,
+		error = xfs_trans_inode_ensure_nextents(&args->trans, dp,
+				XFS_ATTR_FORK,
 				XFS_IEXT_ATTR_MANIP_CNT(rmt_blks));
 		if (error)
 			goto out_trans_cancel;
