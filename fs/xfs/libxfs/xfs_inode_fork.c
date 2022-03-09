@@ -756,3 +756,30 @@ xfs_iext_count_may_overflow(
 
 	return 0;
 }
+
+int
+xfs_iext_count_upgrade(
+	struct xfs_trans	*tp,
+	struct xfs_inode	*ip,
+	int			nr_to_add)
+{
+	if (!xfs_has_large_extent_counts(ip->i_mount) ||
+	    (ip->i_diflags2 & XFS_DIFLAG2_NREXT64) ||
+	    XFS_TEST_ERROR(false, ip->i_mount, XFS_ERRTAG_REDUCE_MAX_IEXTENTS))
+		return -EFBIG;
+
+	ip->i_diflags2 |= XFS_DIFLAG2_NREXT64;
+	xfs_trans_log_inode(tp, ip, XFS_ILOG_CORE);
+
+	/*
+	 * The value of nr_to_add cannot be larger than 2^17
+	 *
+	 * - XFS_MAX_EXTCNT_ATTR_FORK_LARGE - XFS_MAX_EXTCNT_ATTR_FORK_SMALL
+	 *   i.e. 2^32 - 2^15
+	 * - XFS_MAX_EXTCNT_DATA_FORK_LARGE - XFS_MAX_EXTCNT_DATA_FORK_SMALL
+	 *   i.e. 2^48 - 2^31
+	 */
+	ASSERT(nr_to_add <= (1 << 17));
+
+	return 0;
+}

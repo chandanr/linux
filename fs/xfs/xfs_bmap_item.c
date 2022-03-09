@@ -506,8 +506,14 @@ xfs_bui_item_recover(
 		iext_delta = XFS_IEXT_PUNCH_HOLE_CNT;
 
 	error = xfs_iext_count_may_overflow(ip, whichfork, iext_delta);
-	if (error)
+	if (error && error != -EFBIG)
 		goto err_cancel;
+
+	if (error == -EFBIG) {
+		error = xfs_iext_count_upgrade(tp, ip, iext_delta);
+		if (error)
+			goto err_cancel;
+	}
 
 	count = bmap->me_len;
 	error = xfs_trans_log_finish_bmap_update(tp, budp, bui_type, ip,

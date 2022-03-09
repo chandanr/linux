@@ -251,8 +251,14 @@ xfs_iomap_write_direct(
 		return error;
 
 	error = xfs_iext_count_may_overflow(ip, XFS_DATA_FORK, nr_exts);
-	if (error)
+	if (error && error != -EFBIG)
 		goto out_trans_cancel;
+
+	if (error == -EFBIG) {
+		error = xfs_iext_count_upgrade(tp, ip, nr_exts);
+		if (error)
+			goto out_trans_cancel;
+	}
 
 	/*
 	 * From this point onwards we overwrite the imap pointer that the
@@ -555,8 +561,15 @@ xfs_iomap_write_unwritten(
 
 		error = xfs_iext_count_may_overflow(ip, XFS_DATA_FORK,
 				XFS_IEXT_WRITE_UNWRITTEN_CNT);
-		if (error)
+		if (error && error != -EFBIG)
 			goto error_on_bmapi_transaction;
+
+		if (error == -EFBIG) {
+			error = xfs_iext_count_upgrade(tp, ip,
+					XFS_IEXT_WRITE_UNWRITTEN_CNT);
+			if (error)
+				goto error_on_bmapi_transaction;
+		}
 
 		/*
 		 * Modify the unwritten extent state of the buffer.

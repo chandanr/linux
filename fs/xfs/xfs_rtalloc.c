@@ -806,8 +806,15 @@ xfs_growfs_rt_alloc(
 
 		error = xfs_iext_count_may_overflow(ip, XFS_DATA_FORK,
 				XFS_IEXT_ADD_NOSPLIT_CNT);
-		if (error)
+		if (error && error != -EFBIG)
 			goto out_trans_cancel;
+
+		if (error == -EFBIG) {
+			error = xfs_iext_count_upgrade(tp, ip,
+					XFS_IEXT_ADD_NOSPLIT_CNT);
+			if (error)
+				goto out_trans_cancel;
+		}
 
 		/*
 		 * Allocate blocks to the bitmap file.
