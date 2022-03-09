@@ -23,6 +23,7 @@
 #include "xfs_trans.h"
 #include "xfs_ialloc.h"
 #include "xfs_error.h"
+#include "xfs_errortag.h"
 
 /* ----- Kernel only functions below ----- */
 int
@@ -226,8 +227,15 @@ xfs_symlink(
 		goto out_trans_cancel;
 	}
 
+	/*
+	 * Please refer to the comment in xfs_create() for an explaination of
+	 * why a directory inode cannot have its data fork extent counter to
+	 * overflow.
+	 */
 	error = xfs_iext_count_may_overflow(dp, XFS_DATA_FORK,
 			XFS_IEXT_DIR_MANIP_CNT(mp));
+	ASSERT(XFS_TEST_ERROR(false, dp->i_mount,
+			XFS_ERRTAG_REDUCE_MAX_IEXTENTS) || error == 0);
 	if (error)
 		goto out_trans_cancel;
 
