@@ -935,6 +935,14 @@ enum xfs_dinode_fmt {
 #define XFS_MAX_EXTCNT_ATTR_FORK_SMALL	((xfs_extnum_t)((1ULL << 15) - 1))
 
 /*
+ * This macro represents the maximum value by which a filesystem operation can
+ * increase the value of an inode's data/attr fork extent count.
+ */
+#define XFS_MAX_EXTCNT_UPGRADE_NR	\
+	min(XFS_MAX_EXTCNT_ATTR_FORK_LARGE - XFS_MAX_EXTCNT_ATTR_FORK_SMALL,	\
+	    XFS_MAX_EXTCNT_DATA_FORK_LARGE - XFS_MAX_EXTCNT_DATA_FORK_SMALL)
+
+/*
  * Inode minimum and maximum sizes.
  */
 #define	XFS_DINODE_MIN_LOG	8
