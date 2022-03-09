@@ -322,8 +322,15 @@ xfs_dquot_disk_alloc(
 
 	error = xfs_iext_count_may_overflow(quotip, XFS_DATA_FORK,
 			XFS_IEXT_ADD_NOSPLIT_CNT);
-	if (error)
+	if (error && error != -EFBIG)
 		goto err_cancel;
+
+	if (error == -EFBIG) {
+		error = xfs_iext_count_upgrade(tp, quotip,
+				XFS_IEXT_ADD_NOSPLIT_CNT);
+		if (error)
+			goto err_cancel;
+	}
 
 	/* Create the block mapping. */
 	error = xfs_bmapi_write(tp, quotip, dqp->q_fileoffset,

@@ -617,8 +617,15 @@ xfs_reflink_end_cow_extent(
 
 	error = xfs_iext_count_may_overflow(ip, XFS_DATA_FORK,
 			XFS_IEXT_REFLINK_END_COW_CNT);
-	if (error)
+	if (error && error != -EFBIG)
 		goto out_cancel;
+
+	if (error == -EFBIG) {
+		error = xfs_iext_count_upgrade(tp, ip,
+				XFS_IEXT_REFLINK_END_COW_CNT);
+		if (error)
+			goto out_cancel;
+	}
 
 	/*
 	 * In case of racing, overlapping AIO writes no COW extents might be
@@ -1118,8 +1125,14 @@ xfs_reflink_remap_extent(
 		++iext_delta;
 
 	error = xfs_iext_count_may_overflow(ip, XFS_DATA_FORK, iext_delta);
-	if (error)
+	if (error && error != -EFBIG)
 		goto out_cancel;
+
+	if (error == -EFBIG) {
+		error = xfs_iext_count_upgrade(tp, ip, iext_delta);
+		if (error)
+			goto out_cancel;
+	}
 
 	if (smap_real) {
 		/*

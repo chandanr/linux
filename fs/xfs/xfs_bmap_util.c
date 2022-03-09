@@ -859,8 +859,15 @@ xfs_alloc_file_space(
 
 		error = xfs_iext_count_may_overflow(ip, XFS_DATA_FORK,
 				XFS_IEXT_ADD_NOSPLIT_CNT);
-		if (error)
+		if (error && error != -EFBIG)
 			goto error;
+
+		if (error == -EFBIG) {
+			error = xfs_iext_count_upgrade(tp, ip,
+					XFS_IEXT_ADD_NOSPLIT_CNT);
+			if (error)
+				goto error;
+		}
 
 		error = xfs_bmapi_write(tp, ip, startoffset_fsb,
 				allocatesize_fsb, XFS_BMAPI_PREALLOC, 0, imapp,
@@ -914,8 +921,14 @@ xfs_unmap_extent(
 
 	error = xfs_iext_count_may_overflow(ip, XFS_DATA_FORK,
 			XFS_IEXT_PUNCH_HOLE_CNT);
-	if (error)
+	if (error && error != -EFBIG)
 		goto out_trans_cancel;
+
+	if (error == -EFBIG) {
+		error = xfs_iext_count_upgrade(tp, ip, XFS_IEXT_PUNCH_HOLE_CNT);
+		if (error)
+			goto out_trans_cancel;
+	}
 
 	error = xfs_bunmapi(tp, ip, startoffset_fsb, len_fsb, 0, 2, done);
 	if (error)
@@ -1195,8 +1208,14 @@ xfs_insert_file_space(
 
 	error = xfs_iext_count_may_overflow(ip, XFS_DATA_FORK,
 			XFS_IEXT_PUNCH_HOLE_CNT);
-	if (error)
+	if (error && error != -EFBIG)
 		goto out_trans_cancel;
+
+	if (error == -EFBIG) {
+		error = xfs_iext_count_upgrade(tp, ip, XFS_IEXT_PUNCH_HOLE_CNT);
+		if (error)
+			goto out_trans_cancel;
+	}
 
 	/*
 	 * The extent shifting code works on extent granularity. So, if stop_fsb
@@ -1423,16 +1442,30 @@ xfs_swap_extent_rmap(
 				error = xfs_iext_count_may_overflow(ip,
 						XFS_DATA_FORK,
 						XFS_IEXT_SWAP_RMAP_CNT);
-				if (error)
+				if (error && error != -EFBIG)
 					goto out;
+
+				if (error == -EFBIG) {
+					error = xfs_iext_count_upgrade(tp, ip,
+							XFS_IEXT_SWAP_RMAP_CNT);
+					if (error)
+						goto out;
+				}
 			}
 
 			if (xfs_bmap_is_real_extent(&irec)) {
 				error = xfs_iext_count_may_overflow(tip,
 						XFS_DATA_FORK,
 						XFS_IEXT_SWAP_RMAP_CNT);
-				if (error)
+				if (error && error != -EFBIG)
 					goto out;
+
+				if (error == -EFBIG) {
+					error = xfs_iext_count_upgrade(tp, ip,
+							XFS_IEXT_SWAP_RMAP_CNT);
+					if (error)
+						goto out;
+				}
 			}
 
 			/* Remove the mapping from the donor file. */
