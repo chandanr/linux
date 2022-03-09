@@ -5148,24 +5148,23 @@ xfs_bmap_del_extent_real(
 		 */
 
 		/*
-		 * For directories, -ENOSPC is returned since a directory entry
-		 * remove operation must not fail due to low extent count
-		 * availability. -ENOSPC will be handled by higher layers of XFS
+		 * Extent count overflow during directory entry remove/rename
+		 * operation ideally should result in -ENOSPC being returned.
+		 * This error will eventually be handled by higher layers of XFS
 		 * by letting the corresponding empty Data/Free blocks to linger
 		 * until a future remove operation. Dabtree blocks would be
 		 * swapped with the last block in the leaf space and then the
 		 * new last block will be unmapped.
 		 *
-		 * The above logic also applies to the source directory entry of
-		 * a rename operation.
+		 * However, a directory inode can never overflow its data fork
+		 * extent counter because of reasons provided in the definition
+		 * of xfs_create().
 		 */
 		error = xfs_iext_count_may_overflow(ip, whichfork, 1);
-		if (error) {
-			ASSERT(S_ISDIR(VFS_I(ip)->i_mode) &&
-				whichfork == XFS_DATA_FORK);
-			error = -ENOSPC;
+		ASSERT(XFS_TEST_ERROR(false, ip->i_mount,
+				XFS_ERRTAG_REDUCE_MAX_IEXTENTS) || error == 0);
+		if (error)
 			goto done;
-		}
 
 		old = got;
 

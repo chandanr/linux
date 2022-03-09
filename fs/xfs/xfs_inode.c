@@ -1023,8 +1023,25 @@ xfs_create(
 	xfs_ilock(dp, XFS_ILOCK_EXCL | XFS_ILOCK_PARENT);
 	unlock_dp_on_error = true;
 
+	/*
+	 * The maximum file size that can be represented by the data fork extent
+	 * counter in the worst case occurs when all extents are 1 block in
+	 * length and each block is 1KB in size.
+	 *
+	 * With XFS_MAX_EXTCNT_DATA_FORK_SMALL representing maximum extent count
+	 * and with 1KB sized blocks, a file can reach upto,
+	 * 1KB * (2^31) = 2TB
+	 *
+	 * This is much larger than the theoretical maximum size of a directory
+	 * i.e. 32GB * 3 = 96GB.
+	 *
+	 * Hence, a directory inode can never overflow its data fork extent
+	 * counter.
+	 */
 	error = xfs_iext_count_may_overflow(dp, XFS_DATA_FORK,
 			XFS_IEXT_DIR_MANIP_CNT(mp));
+	ASSERT(XFS_TEST_ERROR(false, dp->i_mount,
+			XFS_ERRTAG_REDUCE_MAX_IEXTENTS) || error == 0);
 	if (error)
 		goto out_trans_cancel;
 
@@ -1249,8 +1266,15 @@ xfs_link(
 	xfs_trans_ijoin(tp, sip, XFS_ILOCK_EXCL);
 	xfs_trans_ijoin(tp, tdp, XFS_ILOCK_EXCL);
 
+	/*
+	 * Please refer to the comment in xfs_create() for an explaination of
+	 * why a directory inode cannot have its data fork extent counter to
+	 * overflow.
+	 */
 	error = xfs_iext_count_may_overflow(tdp, XFS_DATA_FORK,
 			XFS_IEXT_DIR_MANIP_CNT(mp));
+	ASSERT(XFS_TEST_ERROR(false, tdp->i_mount,
+			XFS_ERRTAG_REDUCE_MAX_IEXTENTS) || error == 0);
 	if (error)
 		goto error_return;
 
@@ -3232,9 +3256,17 @@ xfs_rename(
 			if (error)
 				goto out_trans_cancel;
 		} else {
+			/*
+			 * Please refer to the comment in xfs_create() for an
+			 * explaination of why a directory inode cannot have its
+			 * data fork extent counter to overflow.
+			 */
 			error = xfs_iext_count_may_overflow(target_dp,
 					XFS_DATA_FORK,
 					XFS_IEXT_DIR_MANIP_CNT(mp));
+			ASSERT(XFS_TEST_ERROR(false, target_dp->i_mount,
+					XFS_ERRTAG_REDUCE_MAX_IEXTENTS) ||
+			       error == 0);
 			if (error)
 				goto out_trans_cancel;
 		}
