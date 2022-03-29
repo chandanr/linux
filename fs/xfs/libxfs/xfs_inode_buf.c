@@ -491,6 +491,15 @@ xfs_dinode_verify(
 	if (mode && nextents + naextents > nblocks)
 		return __this_address;
 
+	if (S_ISDIR(mode)) {
+		uint64_t	max_dfork_nexts;
+
+		max_dfork_nexts = (XFS_DIR2_MAX_SPACES * XFS_DIR2_SPACE_SIZE) >>
+					mp->m_sb.sb_blocklog;
+		if (nextents > max_dfork_nexts)
+			return __this_address;
+	}
+
 	if (mode && XFS_DFORK_BOFF(dip) > mp->m_sb.sb_inodesize)
 		return __this_address;
 
