@@ -6,6 +6,7 @@
 
 ccflags-y += -I $(srctree)/$(src)		# needed for trace events
 ccflags-y += -I $(srctree)/$(src)/libxfs
+ccflags-y += -I $(srctree)/$(src)/libxlog
 
 obj-$(CONFIG_XFS_FS)		+= xfs.o
 
@@ -55,6 +56,25 @@ xfs-y				+= $(addprefix libxfs/, \
 xfs-$(CONFIG_XFS_RT)		+= $(addprefix libxfs/, \
 				   xfs_rtbitmap.o \
 				   )
+# low-level transaction/log code
+xfs-y				+= $(addprefix libxlog/, \
+				   xfs_trans.o \
+				   xfs_log.o \
+				   xfs_log_cil.o \
+				   xfs_bmap_item.o \
+				   xfs_buf_item.o \
+				   xfs_buf_item_recover.o \
+				   xfs_extfree_item.o \
+				   xfs_attr_item.o \
+				   xfs_icreate_item.o \
+				   xfs_inode_item.o \
+				   xfs_inode_item_recover.o \
+				   xfs_iunlink_item.o \
+				   xfs_refcount_item.o \
+				   xfs_rmap_item.o \
+				   xfs_log_recover.o \
+				   xfs_trans_ail.o \
+				   xfs_trans_buf.o)
 
 # highlevel code
 xfs-y				+= xfs_aops.o \
@@ -91,37 +111,20 @@ xfs-y				+= xfs_aops.o \
 				   xfs_super.o \
 				   xfs_symlink.o \
 				   xfs_sysfs.o \
-				   xfs_trans.o \
 				   xfs_xattr.o \
 				   kmem.o
 
-# low-level transaction/log code
-xfs-y				+= xfs_log.o \
-				   xfs_log_cil.o \
-				   xfs_bmap_item.o \
-				   xfs_buf_item.o \
-				   xfs_buf_item_recover.o \
-				   xfs_dquot_item_recover.o \
-				   xfs_extfree_item.o \
-				   xfs_attr_item.o \
-				   xfs_icreate_item.o \
-				   xfs_inode_item.o \
-				   xfs_inode_item_recover.o \
-				   xfs_iunlink_item.o \
-				   xfs_refcount_item.o \
-				   xfs_rmap_item.o \
-				   xfs_log_recover.o \
-				   xfs_trans_ail.o \
-				   xfs_trans_buf.o
-
 # optional features
 xfs-$(CONFIG_XFS_QUOTA)		+= xfs_dquot.o \
-				   xfs_dquot_item.o \
-				   xfs_trans_dquot.o \
 				   xfs_qm_syscalls.o \
 				   xfs_qm_bhv.o \
 				   xfs_qm.o \
 				   xfs_quotaops.o
+
+xfs-$(CONFIG_XFS_QUOTA)		+= $(addprefix libxlog/, \
+				   xfs_trans_dquot.o \
+				   xfs_dquot_item.o \
+				   xfs_dquot_item_recover.o)
 
 # xfs_rtbitmap is shared with libxfs
 xfs-$(CONFIG_XFS_RT)		+= xfs_rtalloc.o

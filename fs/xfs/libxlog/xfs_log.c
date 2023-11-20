@@ -16,7 +16,9 @@
 #include "xfs_log.h"
 #include "xfs_log_priv.h"
 #include "xfs_trace.h"
+#ifdef __KERNEL__
 #include "xfs_sysfs.h"
+#endif
 #include "xfs_sb.h"
 #include "xfs_health.h"
 
@@ -723,10 +725,12 @@ xfs_log_mount(
 		}
 	}
 
+#ifdef __KERNEL__
 	error = xfs_sysfs_init(&log->l_kobj, &xfs_log_ktype, &mp->m_kobj,
 			       "log");
 	if (error)
 		goto out_destroy_ail;
+#endif /* __KERNEL__ */
 
 	/* Normal transactions can now occur */
 	clear_bit(XLOG_ACTIVE_RECOVERY, &log->l_opstate);
@@ -1107,7 +1111,9 @@ xfs_log_unmount(
 
 	xfs_trans_ail_destroy(mp);
 
+#ifdef __KERNEL__
 	xfs_sysfs_del(&mp->m_log->l_kobj);
+#endif
 
 	xlog_dealloc_log(mp->m_log);
 }
