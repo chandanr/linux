@@ -3417,7 +3417,7 @@ xfs_bmap_exact_minlen_extent_alloc(
 	 * we need not be concerned about a drop in performance in
 	 * "debug only" code paths.
 	 */
-	ap->blkno = XFS_AGB_TO_FSB(mp, 0, 0);
+	ap->blkno = XFS_INO_TO_FSB(mp, ap->ip->i_ino);
 
 	args.oinfo = XFS_RMAP_OINFO_SKIP_UPDATE;
 	args.minlen = args.maxlen = ap->minlen;
