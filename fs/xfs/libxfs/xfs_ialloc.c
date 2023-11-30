@@ -1799,6 +1799,22 @@ xfs_dialloc(
 	flags = XFS_ALLOC_FLAG_TRYLOCK;
 retry:
 	for_each_perag_wrap_at(mp, start_agno, mp->m_maxagi, agno, pag) {
+		/*
+		 * During inode chunk allocation from an AG, we could lock AG
+		 * X's AGF and then later find that the only suitable extent in
+		 * AG X straddles either min_agbno or max_agbno. Hence, the task
+		 * moves on to the next AG. However, AG X's AGF remains
+		 * locked. The task could then wrap around and try to lock AG
+		 * 0's AGI. Since AGI locking does not honor tp->t_highest_agno,
+		 * it breaks the AG locking order rules. Hence roll the
+		 * transaction when we wrap around the AG list.
+		 */
+		if ((*tpp)->t_highest_agno != NULLAGNUMBER && agno == 0) {
+			error = xfs_trans_roll(tpp);
+			if (error)
+				break;
+		}
+
 		if (xfs_dialloc_good_ag(pag, *tpp, mode, flags, ok_alloc)) {
 			error = xfs_dialloc_try_ag(pag, tpp, parent,
 					&ino, ok_alloc);
