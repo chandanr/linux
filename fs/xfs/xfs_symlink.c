@@ -230,10 +230,26 @@ xfs_symlink(
 	 * Allocate an inode for the symlink.
 	 */
 	error = xfs_dialloc(&tp, dp->i_ino, S_IFLNK, &ino);
-	if (!error)
-		error = xfs_init_new_inode(idmap, tp, dp, ino,
-				S_IFLNK | (mode & ~S_IFMT), 1, 0, prid,
-				false, &ip);
+	if (error)
+		goto out_trans_cancel;
+
+	/*
+	 * When an inode is allocated, the task would have locked the
+	 * corresponding AG's AGI. Later, when allocating space for symlink's
+	 * blocks, the task could wrap around the AGs and try to lock the AGF of
+	 * an AG whose agno is less than that of the AGI that was prevously
+	 * locked. This breaks the AG locking order rule. Hence roll the
+	 * transaction to release the lock on the AGI.
+	 */
+	if (XFS_INO_TO_AGNO(mp, ino) != 0) {
+		error = xfs_trans_roll(&tp);
+		if (error)
+			goto out_trans_cancel;
+	}
+
+	error = xfs_init_new_inode(idmap, tp, dp, ino,
+			S_IFLNK | (mode & ~S_IFMT), 1, 0, prid,
+			false, &ip);
 	if (error)
 		goto out_trans_cancel;
 
