@@ -1,0 +1,141 @@
+From 37c7a2113b604aefe006b08b1ef9aac4f6d13317 Mon Sep 17 00:00:00 2001
+From: Chandan Babu R <chandanbabu@kernel.org>
+Date: Tue, 5 Dec 2023 15:29:26 +0530
+Subject: [RFC PATCH 0/3] Fix deadlock when executing xfs/538
+To: djwong@kernel.org
+
+Executing xfs/538 on a Linux v6.6 kernel can lead to the following
+deadlock,
+
+   |------------------+------------------+------------------|
+   | Task A           | Task B           | Task C           |
+   | 57078            | 57089            | 57095            |
+   |------------------+------------------+------------------|
+   | Lock AG 1's AGF  |                  |                  |
+   |                  | Lock AG 2's AGI  |                  |
+   |                  | Wait for lock on |                  |
+   |                  | AG 1's AGF       |                  |
+   |                  |                  | Lock AG 3's AGF  |
+   |                  |                  | Wait for lock on |
+   |                  |                  | AG 2's AGI       |
+   | Wait for lock on |                  |                  |
+   | AG 3's AGF       |                  |                  |
+   |------------------+------------------+------------------|
+   
+As illustrated above, Task B and C are violating the AG locking order
+rule i.e. AGI/AGF must be locked in increasing AG order and that
+within an AG, AGI must be locked before an AGF.
+
+Task B's call trace:
+  context_switch (kernel/sched/core.c:5382:2)
+  __schedule (kernel/sched/core.c:6695:8)
+  schedule (kernel/sched/core.c:6771:3)
+  schedule_timeout (kernel/time/timer.c:2143:3)
+  ___down_common (kernel/locking/semaphore.c:225:13)
+  __down_common (kernel/locking/semaphore.c:246:8)
+  down (kernel/locking/semaphore.c:63:3)
+  xfs_buf_lock (fs/xfs/xfs_buf.c:1126:2)
+  xfs_buf_find_lock (fs/xfs/xfs_buf.c:553:3)
+  xfs_buf_lookup (fs/xfs/xfs_buf.c:592:10)
+  xfs_buf_get_map (fs/xfs/xfs_buf.c:702:10)
+  xfs_buf_read_map (fs/xfs/xfs_buf.c:817:10)
+  xfs_trans_read_buf_map (fs/xfs/xfs_trans_buf.c:289:10)
+  xfs_trans_read_buf (./fs/xfs/xfs_trans.h:212:9)
+  xfs_read_agf (fs/xfs/libxfs/xfs_alloc.c:3153:10)
+  xfs_alloc_read_agf (fs/xfs/libxfs/xfs_alloc.c:3185:10)
+  xfs_alloc_fix_freelist (fs/xfs/libxfs/xfs_alloc.c:2658:11)
+  xfs_alloc_vextent_prepare_ag (fs/xfs/libxfs/xfs_alloc.c:3321:10)
+  xfs_alloc_vextent_iterate_ags (fs/xfs/libxfs/xfs_alloc.c:3506:11)
+  xfs_alloc_vextent_first_ag (fs/xfs/libxfs/xfs_alloc.c:3641:10)
+  xfs_bmap_exact_minlen_extent_alloc (fs/xfs/libxfs/xfs_bmap.c:3434:10)
+  xfs_bmap_alloc_userdata (fs/xfs/libxfs/xfs_bmap.c:4084:10)
+  xfs_bmapi_allocate (fs/xfs/libxfs/xfs_bmap.c:4129:11)
+  xfs_bmapi_write (fs/xfs/libxfs/xfs_bmap.c:4438:12)
+  xfs_symlink (fs/xfs/xfs_symlink.c:271:11)
+  xfs_vn_symlink (fs/xfs/xfs_iops.c:419:10)
+  vfs_symlink (fs/namei.c:4480:10)
+  vfs_symlink (fs/namei.c:4464:5)
+  do_symlinkat (fs/namei.c:4506:11)
+  __do_sys_symlink (fs/namei.c:4527:9)
+  __se_sys_symlink (fs/namei.c:4525:1)
+  __x64_sys_symlink (fs/namei.c:4525:1)
+  do_syscall_x64 (arch/x86/entry/common.c:50:14)
+  do_syscall_64 (arch/x86/entry/common.c:80:7)
+  entry_SYSCALL_64+0xaa/0x1a6 (arch/x86/entry/entry_64.S:120)
+
+Task B above locked AG 2's AGI, allocated an ondisk inode, then tried
+to allocate blocks (required for holding pathname representing the
+symbolic link) from AG 1. This happened due to
+xfs_bmap_exact_minlen_extent_alloc() iterating across AGs starting
+from AG 0.
+
+The first patch in the series (xfs: Use inode's fsbno as target fsb in
+xfs_bmap_exact_minlen_extent_alloc()) modifies
+xfs_bmap_exact_minlen_extent_alloc() to now start iterating AGs
+starting from the AG containing the fsb "XFS_INO_TO_FSB(mp,
+ap->ip->i_ino)". This is similar to what is being performed by
+xfs_bmap_btalloc_best_length().
+
+However, this change proved insufficient to prevent a deadlock. Task B
+now iterated across AGs starting from AG 2 and wrapped around to AG 0
+due to lack of free space in AGs [2, xfs_sb->sb_agcount - 1]. This caused
+a deadlock with another task which had locked AG 0's AGF and was
+trying to lock AG 2's AGI. To fix this incorrect AG lock order, the
+second patch (xfs: Fix incorrect AG locking order during symbolic link
+creation) rolls the transaction before allocating blocks for the
+symbolic link.
+
+Task C's call trace:
+  context_switch (kernel/sched/core.c:5382:2)
+  __schedule (kernel/sched/core.c:6695:8)
+  schedule (kernel/sched/core.c:6771:3)
+  schedule_timeout (kernel/time/timer.c:2143:3)
+  ___down_common (kernel/locking/semaphore.c:225:13)
+  __down_common (kernel/locking/semaphore.c:246:8)
+  down (kernel/locking/semaphore.c:63:3)
+  xfs_buf_lock (fs/xfs/xfs_buf.c:1126:2)
+  xfs_buf_find_lock (fs/xfs/xfs_buf.c:553:3)
+  xfs_buf_lookup (fs/xfs/xfs_buf.c:592:10)
+  xfs_buf_get_map (fs/xfs/xfs_buf.c:702:10)
+  xfs_buf_read_map (fs/xfs/xfs_buf.c:817:10)
+  xfs_trans_read_buf_map (fs/xfs/xfs_trans_buf.c:289:10)
+  xfs_trans_read_buf (./fs/xfs/xfs_trans.h:212:9)
+  xfs_read_agi (fs/xfs/libxfs/xfs_ialloc.c:2598:10)
+  xfs_ialloc_read_agi (fs/xfs/libxfs/xfs_ialloc.c:2626:10)
+  xfs_dialloc_try_ag (fs/xfs/libxfs/xfs_ialloc.c:1690:10)
+  xfs_dialloc (fs/xfs/libxfs/xfs_ialloc.c:1803:12)
+  xfs_create (fs/xfs/xfs_inode.c:1020:10)
+  xfs_generic_create (fs/xfs/xfs_iops.c:199:11)
+  vfs_mkdir (fs/namei.c:4120:10)
+  do_mkdirat (fs/namei.c:4143:11)
+  __do_sys_mkdir (fs/namei.c:4163:9)
+  __se_sys_mkdir (fs/namei.c:4161:1)
+  __x64_sys_mkdir (fs/namei.c:4161:1)
+  do_syscall_x64 (arch/x86/entry/common.c:50:14)
+  do_syscall_64 (arch/x86/entry/common.c:80:7)
+  entry_SYSCALL_64+0xaa/0x1a6 (arch/x86/entry/entry_64.S:120)
+
+Task C above was trying to allocate an inode chunk to serve a mkdir()
+syscall request. Task C locked AG 3's AGF and searched for the
+required extent. However, the only suitable extent was found to be
+straddling xfs_alloc_arg->max_agbno. Hence, it moved to the next AG
+and ended up wrapping around the AG list. To fix this incorrect AG
+lock order, the second patch (xfs: Fix incorrect AG locking order
+during inode allocation) rolls the transaction when we wrap around the
+AG list. This will free the AGF from AGs greater than AG 0 which were
+locked before locking any of the AG 0's metadata.
+
+Chandan Babu R (3):
+  xfs: Use inode's fsbno as target fsb in
+    xfs_bmap_exact_minlen_extent_alloc()
+  xfs: Fix incorrect AG locking order during symbolic link creation
+  xfs: Fix incorrect AG locking order during inode allocation
+
+ fs/xfs/libxfs/xfs_bmap.c   |  2 +-
+ fs/xfs/libxfs/xfs_ialloc.c | 16 ++++++++++++++++
+ fs/xfs/xfs_symlink.c       | 24 ++++++++++++++++++++----
+ 3 files changed, 37 insertions(+), 5 deletions(-)
+
+-- 
+2.41.0
+
