@@ -51,6 +51,7 @@ xfs-y				+= $(addprefix libxfs/, \
 				   xfs_trans_inode.o \
 				   xfs_trans_resv.o \
 				   xfs_types.o \
+				   xfs_extent_busy.o \
 				   )
 # xfs_rtbitmap is shared with libxfs
 xfs-$(CONFIG_XFS_RT)		+= $(addprefix libxfs/, \
@@ -88,7 +89,6 @@ xfs-y				+= xfs_aops.o \
 				   xfs_discard.o \
 				   xfs_error.o \
 				   xfs_export.o \
-				   xfs_extent_busy.o \
 				   xfs_file.o \
 				   xfs_filestream.o \
 				   xfs_fsmap.o \
