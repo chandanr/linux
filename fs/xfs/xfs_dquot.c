@@ -18,7 +18,6 @@
 #include "xfs_trans.h"
 #include "xfs_buf_item.h"
 #include "xfs_trans_space.h"
-#include "xfs_trans_priv.h"
 #include "xfs_qm.h"
 #include "xfs_trace.h"
 #include "xfs_log.h"

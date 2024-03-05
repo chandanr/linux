@@ -19,7 +19,6 @@
 #include "xfs_rtalloc.h"
 #include "xfs_bmap.h"
 #include "xfs_trans.h"
-#include "xfs_trans_priv.h"
 #include "xfs_log.h"
 #include "xfs_log_priv.h"
 #include "xfs_error.h"

@@ -12,7 +12,6 @@
 #include "xfs_bit.h"
 #include "xfs_mount.h"
 #include "xfs_trans.h"
-#include "xfs_trans_priv.h"
 #include "xfs_buf_item.h"
 #include "xfs_inode.h"
 #include "xfs_inode_item.h"
