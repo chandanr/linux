@@ -14,7 +14,8 @@
 #include "xfs_quota.h"
 #include "xfs_trans.h"
 #include "xfs_buf_item.h"
-#include "xfs_qm.h"
+#include "xfs_dquot_item.h"
+#include "xfs_dquot.h"
 #include "xfs_log.h"
 
 static inline struct xfs_dq_logitem *DQUOT_ITEM(struct xfs_log_item *lip)
