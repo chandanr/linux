@@ -16,7 +16,6 @@
 #include "xfs_trace.h"
 #include "xfs_buf_item.h"
 #include "xfs_log.h"
-#include "xfs_log_priv.h"
 #include "xfs_error.h"
 
 #include <linux/iversion.h>

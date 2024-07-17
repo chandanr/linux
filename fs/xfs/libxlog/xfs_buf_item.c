@@ -20,7 +20,6 @@
 #include "xfs_dquot.h"
 #include "xfs_trace.h"
 #include "xfs_log.h"
-#include "xfs_log_priv.h"
 
 
 struct kmem_cache	*xfs_buf_item_cache;

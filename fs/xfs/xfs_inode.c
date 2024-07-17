@@ -35,7 +35,6 @@
 #include "xfs_bmap_btree.h"
 #include "xfs_reflink.h"
 #include "xfs_ag.h"
-#include "xfs_log_priv.h"
 
 struct kmem_cache *xfs_inode_cache;
 

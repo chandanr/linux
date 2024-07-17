@@ -22,7 +22,6 @@
 #include "xfs_bmap.h"
 #include "xfs_trace.h"
 #include "xfs_error.h"
-#include "xfs_log_priv.h"
 #include "xfs_log_recover.h"
 
 struct kmem_cache	*xfs_efi_cache;

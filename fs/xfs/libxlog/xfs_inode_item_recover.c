@@ -17,7 +17,6 @@
 #include "xfs_buf_item.h"
 #include "xfs_log.h"
 #include "xfs_error.h"
-#include "xfs_log_priv.h"
 #include "xfs_log_recover.h"
 #include "xfs_icache.h"
 #include "xfs_bmap_btree.h"

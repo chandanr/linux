@@ -16,7 +16,6 @@
 #include "xfs_errortag.h"
 #include "xfs_error.h"
 #include "xfs_log.h"
-#include "xfs_log_priv.h"
 
 #ifdef DEBUG
 /*

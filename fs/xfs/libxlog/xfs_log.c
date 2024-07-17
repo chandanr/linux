@@ -14,7 +14,6 @@
 #include "xfs_error.h"
 #include "xfs_trans.h"
 #include "xfs_log.h"
-#include "xfs_log_priv.h"
 #include "xfs_trace.h"
 #ifdef __KERNEL__
 #include "xfs_sysfs.h"
@@ -1602,7 +1601,7 @@ xlog_alloc_log(
 	 * rather funky due to the way the structure is defined.  It is
 	 * done this way so that we can use different sizes for machines
 	 * with different amounts of memory.  See the definition of
-	 * xlog_in_core_t in xfs_log_priv.h for details.
+	 * xlog_in_core_t in xfs_log.h for details.
 	 */
 	ASSERT(log->l_iclog_size >= 4096);
 	for (i = 0; i < log->l_iclog_bufs; i++) {

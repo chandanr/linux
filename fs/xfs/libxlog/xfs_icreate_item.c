@@ -14,7 +14,6 @@
 #include "xfs_trans.h"
 #include "xfs_icreate_item.h"
 #include "xfs_log.h"
-#include "xfs_log_priv.h"
 #include "xfs_log_recover.h"
 #include "xfs_ialloc.h"
 #include "xfs_trace.h"

@@ -24,7 +24,6 @@
 #include "xfs_trans_space.h"
 #include "xfs_errortag.h"
 #include "xfs_error.h"
-#include "xfs_log_priv.h"
 #include "xfs_log_recover.h"
 
 struct kmem_cache		*xfs_attri_cache;

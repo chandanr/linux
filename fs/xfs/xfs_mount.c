@@ -20,7 +20,6 @@
 #include "xfs_bmap.h"
 #include "xfs_trans.h"
 #include "xfs_log.h"
-#include "xfs_log_priv.h"
 #include "xfs_error.h"
 #include "xfs_quota.h"
 #include "xfs_fsops.h"
