@@ -14,6 +14,7 @@
 #include "xfs_extent_busy.h"
 #include "xfs_quota.h"
 #include "xfs_trans.h"
+#include "xfs_trans_quota.h"
 #include "xfs_log.h"
 #include "xfs_trace.h"
 #include "xfs_error.h"
