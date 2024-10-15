@@ -6,6 +6,8 @@
 #ifndef __XFS_DQUOT_H__
 #define __XFS_DQUOT_H__
 
+#include "xfs_quota.h"
+
 /*
  * Dquots are structures that hold quota information about a user or a group,
  * much like inodes are for files. In fact, dquots share many characteristics
@@ -199,6 +201,18 @@ static inline bool xfs_dquot_lowsp(struct xfs_dquot *dqp)
 }
 
 void xfs_dquot_to_disk(struct xfs_disk_dquot *ddqp, struct xfs_dquot *dqp);
+
+extern xfs_failaddr_t xfs_dquot_verify(struct xfs_mount *mp,
+		struct xfs_disk_dquot *ddq, xfs_dqid_t id);
+extern xfs_failaddr_t xfs_dqblk_verify(struct xfs_mount *mp,
+		struct xfs_dqblk *dqb, xfs_dqid_t id);
+extern int xfs_calc_dquots_per_chunk(unsigned int nbblks);
+extern void xfs_dqblk_repair(struct xfs_mount *mp, struct xfs_dqblk *dqb,
+		xfs_dqid_t id, xfs_dqtype_t type);
+time64_t xfs_dquot_from_disk_ts(struct xfs_disk_dquot *ddq,
+		__be32 dtimer);
+__be32 xfs_dquot_to_disk_ts(struct xfs_dquot *ddq, time64_t timer);
+
 
 #define XFS_DQ_IS_LOCKED(dqp)	(mutex_is_locked(&((dqp)->q_qlock)))
 #define XFS_DQ_IS_DIRTY(dqp)	((dqp)->q_flags & XFS_DQFLAG_DIRTY)

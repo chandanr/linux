@@ -6,7 +6,7 @@
 #ifndef __XFS_SCRUB_REPAIR_H__
 #define __XFS_SCRUB_REPAIR_H__
 
-#include "xfs_quota_defs.h"
+#include "xfs_quota.h"
 
 struct xchk_stats_run;
 

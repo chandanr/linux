@@ -2,6 +2,42 @@
 #define __XFS_TRANS_QUOTA_H
 
 /*
+ * We have the possibility of all three quota types being active at once, and
+ * hence free space modification requires modification of all three current
+ * dquots in a single transaction. For this case we need to have a reservation
+ * of at least 3 dquots.
+ *
+ * However, a chmod operation can change both UID and GID in a single
+ * transaction, resulting in requiring {old, new} x {uid, gid} dquots to be
+ * modified. Hence for this case we need to reserve space for at least 4 dquots.
+ *
+ * And in the worst case, there's a rename operation that can be modifying up to
+ * 4 inodes with dquots attached to them. In reality, the only inodes that can
+ * have their dquots modified are the source and destination directory inodes
+ * due to directory name creation and removal. That can require space allocation
+ * and/or freeing on both directory inodes, and hence all three dquots on each
+ * inode can be modified. And if the directories are world writeable, all the
+ * dquots can be unique and so 6 dquots can be modified....
+ *
+ * And, of course, we also need to take into account the dquot log format item
+ * used to describe each dquot.
+ */
+#define XFS_DQUOT_LOGRES(mp)	\
+	((sizeof(struct xfs_dq_logformat) + sizeof(struct xfs_disk_dquot)) * 6)
+
+/*
+ * flags to xfs_trans_mod_dquot.
+ */
+#define XFS_TRANS_DQ_RES_BLKS	XFS_QMOPT_RES_REGBLKS
+#define XFS_TRANS_DQ_RES_RTBLKS	XFS_QMOPT_RES_RTBLKS
+#define XFS_TRANS_DQ_RES_INOS	XFS_QMOPT_RES_INOS
+#define XFS_TRANS_DQ_BCOUNT	XFS_QMOPT_BCOUNT
+#define XFS_TRANS_DQ_DELBCOUNT	XFS_QMOPT_DELBCOUNT
+#define XFS_TRANS_DQ_ICOUNT	XFS_QMOPT_ICOUNT
+#define XFS_TRANS_DQ_RTBCOUNT	XFS_QMOPT_RTBCOUNT
+#define XFS_TRANS_DQ_DELRTBCOUNT XFS_QMOPT_DELRTBCOUNT
+
+/*
  * The structure kept inside the xfs_trans_t keep track of dquot changes
  * within a transaction and apply them later.
  */
