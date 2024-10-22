@@ -912,34 +912,6 @@ xfs_reflink_end_cow(
 }
 
 /*
- * Free all CoW staging blocks that are still referenced by the ondisk refcount
- * metadata.  The ondisk metadata does not track which inode created the
- * staging extent, so callers must ensure that there are no cached inodes with
- * live CoW staging extents.
- */
-int
-xfs_reflink_recover_cow(
-	struct xfs_mount	*mp)
-{
-	struct xfs_perag	*pag;
-	xfs_agnumber_t		agno;
-	int			error = 0;
-
-	if (!xfs_has_reflink(mp))
-		return 0;
-
-	for_each_perag(mp, agno, pag) {
-		error = xfs_refcount_recover_cow_leftovers(mp, pag);
-		if (error) {
-			xfs_perag_rele(pag);
-			break;
-		}
-	}
-
-	return error;
-}
-
-/*
  * Reflinking (Block) Ranges of Two Files Together
  *
  * First, ensure that the reflink flag is set on both inodes.  The flag is an

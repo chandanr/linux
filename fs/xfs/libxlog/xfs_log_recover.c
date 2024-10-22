@@ -25,7 +25,7 @@
 #include "xfs_buf_item.h"
 #include "xfs_ag.h"
 #include "xfs_quota.h"
-#include "xfs_reflink.h"
+#include "xfs_refcount.h"
 
 #define BLK_AVG(blk1, blk2)	((blk1+blk2) >> 1)
 
@@ -3424,6 +3424,34 @@ xlog_recover(
 		error = xlog_do_recover(log, head_blk, tail_blk);
 		set_bit(XLOG_RECOVERY_NEEDED, &log->l_opstate);
 	}
+	return error;
+}
+
+/*
+ * Free all CoW staging blocks that are still referenced by the ondisk refcount
+ * metadata.  The ondisk metadata does not track which inode created the
+ * staging extent, so callers must ensure that there are no cached inodes with
+ * live CoW staging extents.
+ */
+static int
+xfs_reflink_recover_cow(
+	struct xfs_mount	*mp)
+{
+	struct xfs_perag	*pag;
+	xfs_agnumber_t		agno;
+	int			error = 0;
+
+	if (!xfs_has_reflink(mp))
+		return 0;
+
+	for_each_perag(mp, agno, pag) {
+		error = xfs_refcount_recover_cow_leftovers(mp, pag);
+		if (error) {
+			xfs_perag_rele(pag);
+			break;
+		}
+	}
+
 	return error;
 }
 
