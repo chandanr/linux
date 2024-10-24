@@ -25,6 +25,7 @@
 #include "xfs_ag.h"
 #include "xfs_ag_resv.h"
 #include "xfs_quota.h"
+#include "xfs_dquot.h"
 #include "xfs_qm.h"
 #include "xfs_bmap.h"
 #include "xfs_da_format.h"

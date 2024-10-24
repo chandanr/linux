@@ -13,6 +13,7 @@
 #include "xfs_trans.h"
 #include "xfs_inode.h"
 #include "xfs_quota.h"
+#include "xfs_dquot.h"
 #include "xfs_qm.h"
 #include "xfs_errortag.h"
 #include "xfs_error.h"

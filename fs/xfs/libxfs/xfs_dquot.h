@@ -7,6 +7,7 @@
 #define __XFS_DQUOT_H__
 
 #include "xfs_quota.h"
+#include "xfs_dquot_item.h"
 
 /*
  * Dquots are structures that hold quota information about a user or a group,

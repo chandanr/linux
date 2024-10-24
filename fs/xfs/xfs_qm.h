@@ -7,7 +7,6 @@
 #define __XFS_QM_H__
 
 #include "xfs_dquot_item.h"
-#include "xfs_dquot.h"
 #include "xfs_trans_quota.h"
 
 struct xfs_inode;
